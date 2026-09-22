@@ -1,0 +1,17 @@
+node_modules/
+.venv/
+dist/
+build/
+coverage/
+.coverage
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Runtime-only data. Contract fixtures under tests/fixtures remain tracked.
+.pi-arc/
+game-cache/
+run-artifacts/
+tmp/

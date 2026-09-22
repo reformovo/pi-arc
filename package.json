@@ -1,0 +1,38 @@
+{
+	"name": "pi-arc",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"engines": {
+		"node": "22.23.1",
+		"npm": "10.9.8"
+	},
+	"packageManager": "npm@10.9.8",
+	"scripts": {
+		"check:dependencies": "node scripts/check-dependencies.mjs",
+		"check:format-lint": "node scripts/check-format-lint.mjs",
+		"check:types": "node scripts/check-types.mjs",
+		"test:ts": "vitest run --config vitest.config.ts --coverage",
+		"test:py": "node scripts/test-python.mjs",
+		"test:contract": "node scripts/test-contract.mjs",
+		"test:integration": "vitest run --config vitest.integration.config.ts",
+		"check:spec": "node scripts/check-spec.mjs",
+		"check": "node scripts/check-all.mjs",
+		"fix:biome": "biome check --write .",
+		"fix:ruff-lint": "uv run --locked ruff check --fix .",
+		"fix:ruff-format": "uv run --locked ruff format ."
+	},
+	"dependencies": {
+		"@earendil-works/pi-agent-core": "0.86.0",
+		"@earendil-works/pi-ai": "0.86.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.5",
+		"@types/node": "22.19.19",
+		"@vitest/coverage-v8": "4.1.9",
+		"pyright": "1.1.413",
+		"typescript": "5.9.3",
+		"vite": "8.0.16",
+		"vitest": "4.1.9"
+	}
+}

@@ -1,0 +1,43 @@
+import { createHash } from "node:crypto";
+import { readdir, readFile, stat } from "node:fs/promises";
+import path from "node:path";
+import { reportFailure } from "./lib/run-command.mjs";
+
+/** @param {string} root @returns {Promise<string[]>} */
+async function collect(root) {
+	try {
+		if (!(await stat(root)).isDirectory()) return [];
+	} catch (error) {
+		if (error instanceof Error && "code" in error && error.code === "ENOENT") return [];
+		throw error;
+	}
+	/** @type {string[]} */
+	const files = [];
+	for (const entry of await readdir(root, { withFileTypes: true })) {
+		const candidate = path.join(root, entry.name);
+		if (entry.isDirectory()) files.push(...(await collect(candidate)));
+		else if (entry.isFile()) files.push(candidate);
+	}
+	return files;
+}
+
+async function main() {
+	const manifest = JSON.parse(await readFile("generated-manifest.json", "utf8"));
+	const entries = manifest.files;
+	if (!Array.isArray(entries)) throw new Error("generated-manifest.json files must be an array");
+	const actual = (await collect("generated")).map((file) => file.split(path.sep).join("/")).sort();
+	const expected = entries.map((entry) => entry.path).sort();
+	if (JSON.stringify(actual) !== JSON.stringify(expected))
+		throw new Error("generated file list differs from generated-manifest.json");
+	for (const entry of entries) {
+		if (typeof entry.path !== "string" || typeof entry.sha256 !== "string")
+			throw new Error("invalid generated manifest entry");
+		const digest = createHash("sha256")
+			.update(await readFile(entry.path))
+			.digest("hex");
+		if (digest !== entry.sha256) throw new Error(`${entry.path} differs from its generated digest`);
+	}
+	process.stdout.write(`generated drift: OK (${entries.length} files)\n`);
+}
+
+main().catch(reportFailure);
