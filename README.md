@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 阶段：WP-01 项目骨架与质量门禁，等待用户审阅
+- 阶段：WP-01 项目骨架与质量门禁，已通过审阅；WP-02 等待单独授权
 - 领域语言：[CONTEXT.md](CONTEXT.md)
 - 唯一规范：[docs/pi-arc.md](docs/pi-arc.md)
 - 事实基线：[docs/design/round-0-fact-baseline.md](docs/design/round-0-fact-baseline.md)

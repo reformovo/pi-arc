@@ -1,7 +1,8 @@
 ---
-status: awaiting-review
+status: accepted
 started: 2026-09-22
 implementation-completed: 2026-09-22
+accepted: 2026-09-22
 ---
 
 # WP-01：项目骨架与质量门禁
@@ -29,4 +30,4 @@ implementation-completed: 2026-09-22
 
 ## 停止点
 
-展示文件清单、配置取舍、CI job、全部命令输出和剩余风险后暂停。用户确认 WP-01 前不得开始 WP-02。
+展示文件清单、配置取舍、CI job、全部命令输出和剩余风险后暂停。用户已于 2026-09-22 确认 WP-01；WP-02 仍需单独授权后才能开始。
