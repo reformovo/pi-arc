@@ -1,6 +1,8 @@
 ---
-status: blocked
-blocked-by: WP-04 acceptance
+status: accepted
+started: 2026-09-23
+completed: 2026-09-23
+accepted: 2026-09-23
 ---
 
 # WP-05：Python Environment sidecar
@@ -33,4 +35,4 @@ git diff --check
 
 ## 停止点
 
-展示双端 fixture、重复 Action 证明、断连矩阵、process cleanup 和 sentinel 结果后暂停。不得实现 Run controller。
+已展示双端 fixture、重复 Action 证明、断连矩阵、process cleanup 和 sentinel 结果，用户已接受 WP-05 并授权 WP-06。
