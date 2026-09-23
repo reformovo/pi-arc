@@ -18,6 +18,7 @@
 		"test:integration": "vitest run --config vitest.integration.config.ts",
 		"check:spec": "node scripts/check-spec.mjs",
 		"check": "node scripts/check-all.mjs",
+		"generate:schemas": "node scripts/generate-schemas.mjs",
 		"fix:biome": "biome check --write .",
 		"fix:ruff-lint": "uv run --locked ruff check --fix .",
 		"fix:ruff-format": "uv run --locked ruff format ."

@@ -1,6 +1,8 @@
 ---
-status: blocked
-blocked-by: WP-01 acceptance
+status: accepted
+started: 2026-09-22
+implementation-completed: 2026-09-22
+accepted: 2026-09-22
 ---
 
 # WP-02：版本化 contract 与共享 fixtures
@@ -33,4 +35,4 @@ git diff --check
 
 ## 停止点
 
-展示 schema 清单、fixture matrix、双端结果与 generated drift 证明后暂停。不得开始 artifact 实现。
+展示 schema 清单、fixture matrix、双端结果与 generated drift 证明后暂停。用户已于 2026-09-22 确认 WP-02；WP-03 仍需单独授权后才能开始。

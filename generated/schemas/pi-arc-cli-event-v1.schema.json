@@ -1,0 +1,57 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "pi-arc.cli-event.v1",
+	"title": "pi-arc CLI event",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"schema",
+		"sequence",
+		"occurredAt",
+		"runId",
+		"type",
+		"data"
+	],
+	"properties": {
+		"schema": {
+			"const": "pi-arc.cli-event.v1"
+		},
+		"sequence": {
+			"type": "integer",
+			"minimum": 1,
+			"maximum": 9007199254740991
+		},
+		"occurredAt": {
+			"type": "string",
+			"pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?Z$"
+		},
+		"runId": {
+			"type": [
+				"string",
+				"null"
+			]
+		},
+		"type": {
+			"type": "string",
+			"enum": [
+				"run.started",
+				"run.resumed",
+				"model.requested",
+				"model.responded",
+				"tool.completed",
+				"tool.rejected",
+				"action.intent",
+				"environment.receipt",
+				"turn.committed",
+				"context.boundary",
+				"audit.finding",
+				"audit.completed",
+				"run.completed",
+				"run.rejected"
+			]
+		},
+		"data": {
+			"type": "object"
+		}
+	}
+}

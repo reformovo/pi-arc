@@ -1,0 +1,123 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "pi-arc.run-manifest.v1",
+	"title": "pi-arc Run manifest",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"schema",
+		"runId",
+		"game",
+		"model",
+		"runtime",
+		"coordinates",
+		"seed",
+		"config"
+	],
+	"properties": {
+		"schema": {
+			"const": "pi-arc.run-manifest.v1"
+		},
+		"runId": {
+			"type": "string",
+			"minLength": 1
+		},
+		"game": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"id",
+				"sourceLocator",
+				"treeDigest"
+			],
+			"properties": {
+				"id": {
+					"type": "string",
+					"pattern": "^[a-z0-9]{4}-[A-Za-z0-9]+$"
+				},
+				"sourceLocator": {
+					"type": "string",
+					"minLength": 1
+				},
+				"treeDigest": {
+					"type": "string",
+					"pattern": "^[0-9a-f]{64}$"
+				}
+			}
+		},
+		"model": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"provider",
+				"modelId"
+			],
+			"properties": {
+				"provider": {
+					"type": "string",
+					"minLength": 1
+				},
+				"modelId": {
+					"type": "string",
+					"minLength": 1
+				},
+				"thinkingLevel": {
+					"type": "string",
+					"enum": [
+						"off",
+						"minimal",
+						"low",
+						"medium",
+						"high",
+						"xhigh",
+						"max"
+					]
+				}
+			}
+		},
+		"runtime": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"piAgentCore",
+				"piAi"
+			],
+			"properties": {
+				"piAgentCore": {
+					"type": "string",
+					"const": "0.86.0"
+				},
+				"piAi": {
+					"type": "string",
+					"const": "0.86.0"
+				}
+			}
+		},
+		"coordinates": {
+			"type": "integer",
+			"const": 1024
+		},
+		"seed": {
+			"type": "integer",
+			"const": 42
+		},
+		"config": {
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"actionBudget",
+				"gameOffline"
+			],
+			"properties": {
+				"actionBudget": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 999999
+				},
+				"gameOffline": {
+					"type": "boolean"
+				}
+			}
+		}
+	}
+}

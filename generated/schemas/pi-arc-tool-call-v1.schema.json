@@ -1,0 +1,39 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "pi-arc.tool-call.v1",
+	"title": "pi-arc model tool call",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"schema",
+		"invocationId",
+		"name",
+		"args"
+	],
+	"properties": {
+		"schema": {
+			"const": "pi-arc.tool-call.v1"
+		},
+		"invocationId": {
+			"type": "string",
+			"minLength": 1
+		},
+		"name": {
+			"type": "string",
+			"enum": [
+				"play",
+				"inspect",
+				"read_pixels",
+				"history",
+				"read_guide",
+				"write_guide",
+				"read_working",
+				"write_working",
+				"save_compact_checkpoint"
+			]
+		},
+		"args": {
+			"type": "object"
+		}
+	}
+}

@@ -1,0 +1,273 @@
+[
+	{
+		"name": "cli-event-valid-unicode",
+		"schema": "pi-arc.cli-event.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.cli-event.v1",
+			"sequence": 1,
+			"occurredAt": "2026-09-22T00:00:00Z",
+			"runId": null,
+			"type": "run.rejected",
+			"data": { "message": "配置拒绝 🧪" }
+		}
+	},
+	{
+		"name": "run-manifest-valid",
+		"schema": "pi-arc.run-manifest.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.run-manifest.v1",
+			"runId": "run-1",
+			"game": {
+				"id": "ls20-9607627b",
+				"sourceLocator": "arc-agi://public/ls20-9607627b?sdk=0.9.9",
+				"treeDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+			},
+			"model": { "provider": "fake", "modelId": "offline-model", "thinkingLevel": "minimal" },
+			"runtime": { "piAgentCore": "0.86.0", "piAi": "0.86.0" },
+			"coordinates": 1024,
+			"seed": 42,
+			"config": { "actionBudget": 2000, "gameOffline": true }
+		}
+	},
+	{
+		"name": "domain-record-valid",
+		"schema": "pi-arc.domain-record.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.domain-record.v1",
+			"sequence": 1,
+			"recordedAt": "2026-09-22T00:00:00Z",
+			"recordType": "run.binding",
+			"previousDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+			"digest": "1111111111111111111111111111111111111111111111111111111111111111",
+			"payload": { "runId": "run-1" }
+		}
+	},
+	{
+		"name": "runtime-record-valid",
+		"schema": "pi-arc.runtime-record.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.runtime-record.v1",
+			"sequence": 1,
+			"recordedAt": "2026-09-22T00:00:00Z",
+			"eventType": "model.requested",
+			"payload": { "provider": "fake" }
+		}
+	},
+	{
+		"name": "raw-frame-valid",
+		"schema": "pi-arc.raw-frame.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.raw-frame.v1",
+			"width": 2,
+			"height": 2,
+			"pixels": [[0, 1], [2, 255]],
+			"runId": "run-1",
+			"environmentInstanceId": "env-1",
+			"turn": 0,
+			"frame": 0,
+			"actionId": null,
+			"contentDigest": "2222222222222222222222222222222222222222222222222222222222222222"
+		}
+	},
+	{
+		"name": "terminal-valid",
+		"schema": "pi-arc.terminal.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.terminal.v1",
+			"runId": "run-1",
+			"outcomeClass": "win",
+			"terminationReason": "WIN",
+			"lastCommittedTurn": 3,
+			"ledgerHead": "3333333333333333333333333333333333333333333333333333333333333333",
+			"recordedAt": "2026-09-22T00:00:00Z"
+		}
+	},
+	{
+		"name": "audit-valid",
+		"schema": "pi-arc.audit.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.audit.v1",
+			"runId": "run-1",
+			"ok": true,
+			"manifestDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+			"ledgerHead": "3333333333333333333333333333333333333333333333333333333333333333",
+			"findings": []
+		}
+	},
+	{
+		"name": "sidecar-request-valid",
+		"schema": "pi-arc.sidecar-request.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.sidecar.v1",
+			"requestId": "req-1",
+			"type": "open",
+			"payload": {
+				"gameId": "ls20-9607627b",
+				"treeDigest": "0000000000000000000000000000000000000000000000000000000000000000",
+				"seed": 42
+			}
+		}
+	},
+	{
+		"name": "sidecar-response-valid",
+		"schema": "pi-arc.sidecar-response.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.sidecar.v1",
+			"requestId": "req-1",
+			"type": "open",
+			"ok": true,
+			"payload": { "environmentInstanceId": "env-1" }
+		}
+	},
+	{
+		"name": "tool-call-valid",
+		"schema": "pi-arc.tool-call.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.tool-call.v1",
+			"invocationId": "inv-1",
+			"name": "play",
+			"args": { "action": "ACTION1" }
+		}
+	},
+	{
+		"name": "tool-result-valid",
+		"schema": "pi-arc.tool-result.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.tool-result.v1",
+			"invocationId": "inv-1",
+			"name": "play",
+			"ok": false,
+			"error": { "code": "observation_required", "message": "observe first" }
+		}
+	},
+	{
+		"name": "run-result-valid",
+		"schema": "pi-arc.run-result.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.run-result.v1",
+			"runId": "run-1",
+			"outcomeClass": "non_success",
+			"terminationReason": "action_budget_exhausted",
+			"lastCommittedTurn": 3,
+			"artifactRoot": "/tmp/run-1",
+			"audit": { "ok": true }
+		}
+	},
+	{
+		"name": "audit-result-valid",
+		"schema": "pi-arc.audit-result.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.audit-result.v1",
+			"ok": true,
+			"runId": "run-1",
+			"manifestDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+			"ledgerHead": "3333333333333333333333333333333333333333333333333333333333333333",
+			"findings": []
+		}
+	},
+	{
+		"name": "cli-event-unknown-field",
+		"schema": "pi-arc.cli-event.v1",
+		"valid": false,
+		"value": {
+			"schema": "pi-arc.cli-event.v1",
+			"sequence": 1,
+			"occurredAt": "2026-09-22T00:00:00Z",
+			"runId": null,
+			"type": "run.rejected",
+			"data": {},
+			"unknown": true
+		}
+	},
+	{
+		"name": "cli-event-unknown-enum",
+		"schema": "pi-arc.cli-event.v1",
+		"valid": false,
+		"value": {
+			"schema": "pi-arc.cli-event.v1",
+			"sequence": 1,
+			"occurredAt": "2026-09-22T00:00:00Z",
+			"runId": null,
+			"type": "run.maybe",
+			"data": {}
+		}
+	},
+	{
+		"name": "cli-event-major-mismatch",
+		"schema": "pi-arc.cli-event.v1",
+		"valid": false,
+		"value": {
+			"schema": "pi-arc.cli-event.v2",
+			"sequence": 1,
+			"occurredAt": "2026-09-22T00:00:00Z",
+			"runId": null,
+			"type": "run.rejected",
+			"data": {}
+		}
+	},
+	{
+		"name": "cli-event-unsafe-integer",
+		"schema": "pi-arc.cli-event.v1",
+		"valid": false,
+		"value": {
+			"schema": "pi-arc.cli-event.v1",
+			"sequence": 9007199254740992,
+			"occurredAt": "2026-09-22T00:00:00Z",
+			"runId": null,
+			"type": "run.rejected",
+			"data": {}
+		}
+	},
+	{
+		"name": "run-manifest-unknown-field",
+		"schema": "pi-arc.run-manifest.v1",
+		"valid": false,
+		"value": {
+			"schema": "pi-arc.run-manifest.v1",
+			"runId": "run-1",
+			"game": {
+				"id": "ls20-9607627b",
+				"sourceLocator": "arc-agi://public/ls20-9607627b?sdk=0.9.9",
+				"treeDigest": "0000000000000000000000000000000000000000000000000000000000000000"
+			},
+			"model": { "provider": "fake", "modelId": "offline-model" },
+			"runtime": { "piAgentCore": "0.86.0", "piAi": "0.86.0" },
+			"coordinates": 512,
+			"seed": 42,
+			"config": { "actionBudget": 2000, "gameOffline": true }
+		}
+	},
+	{
+		"name": "sidecar-unknown-type",
+		"schema": "pi-arc.sidecar-request.v1",
+		"valid": false,
+		"value": { "schema": "pi-arc.sidecar.v1", "requestId": "req-1", "type": "replay_action", "payload": {} }
+	},
+	{
+		"name": "domain-bad-digest",
+		"schema": "pi-arc.domain-record.v1",
+		"valid": false,
+		"value": {
+			"schema": "pi-arc.domain-record.v1",
+			"sequence": 1,
+			"recordedAt": "2026-09-22T00:00:00Z",
+			"recordType": "run.binding",
+			"previousDigest": "not-a-digest",
+			"digest": "1111111111111111111111111111111111111111111111111111111111111111",
+			"payload": {}
+		}
+	}
+]

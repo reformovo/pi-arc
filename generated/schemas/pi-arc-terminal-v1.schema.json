@@ -1,0 +1,63 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "pi-arc.terminal.v1",
+	"title": "pi-arc terminal record",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"schema",
+		"runId",
+		"outcomeClass",
+		"terminationReason",
+		"lastCommittedTurn",
+		"ledgerHead",
+		"recordedAt"
+	],
+	"properties": {
+		"schema": {
+			"const": "pi-arc.terminal.v1"
+		},
+		"runId": {
+			"type": "string",
+			"minLength": 1
+		},
+		"outcomeClass": {
+			"type": "string",
+			"enum": [
+				"win",
+				"non_success",
+				"unknown_outcome",
+				"audit_failure"
+			]
+		},
+		"terminationReason": {
+			"type": "string",
+			"enum": [
+				"WIN",
+				"action_budget_exhausted",
+				"model_failure",
+				"model_no_progress",
+				"checkpoint_failed",
+				"environment_lost",
+				"evidence_incomplete",
+				"evidence_corrupt",
+				"unknown_action_outcome",
+				"cancelled",
+				"controller_failure"
+			]
+		},
+		"lastCommittedTurn": {
+			"type": "integer",
+			"minimum": 0,
+			"maximum": 9007199254740991
+		},
+		"ledgerHead": {
+			"type": "string",
+			"pattern": "^[0-9a-f]{64}$"
+		},
+		"recordedAt": {
+			"type": "string",
+			"pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?Z$"
+		}
+	}
+}

@@ -29,6 +29,24 @@ async function main() {
 	const expected = entries.map((entry) => entry.path).sort();
 	if (JSON.stringify(actual) !== JSON.stringify(expected))
 		throw new Error("generated file list differs from generated-manifest.json");
+	/** @type {{ sourceVersion: number; schemas: Array<{ $id: string; [key: string]: unknown }> }} */
+	const source = JSON.parse(await readFile("schemas/source.json", "utf8"));
+	if (source.sourceVersion !== 1 || !Array.isArray(source.schemas)) throw new Error("invalid schema source");
+	const generatedByName = new Map(
+		source.schemas.map((schema) => [
+			`generated/schemas/${schema.$id.replaceAll(".", "-")}.schema.json`,
+			`${JSON.stringify(schema, null, "\t")}\n`,
+		]),
+	);
+	if (
+		generatedByName.size !== source.schemas.length ||
+		[...generatedByName.values()].some((value) => typeof value !== "string")
+	) {
+		throw new Error("schema source contains duplicate or invalid generated entries");
+	}
+	for (const [file, expectedText] of generatedByName) {
+		if ((await readFile(file, "utf8")) !== expectedText) throw new Error(`${file} differs from schemas/source.json`);
+	}
 	for (const entry of entries) {
 		if (typeof entry.path !== "string" || typeof entry.sha256 !== "string")
 			throw new Error("invalid generated manifest entry");

@@ -1,0 +1,26 @@
+[
+	{
+		"name": "unicode-order",
+		"value": {
+			"z": "最后",
+			"a": "é",
+			"emoji": "🧪",
+			"nested": { "β": 2, "α": 1 },
+			"array": [3, "中", true]
+		},
+		"canonical": "{\"a\":\"é\",\"array\":[3,\"中\",true],\"emoji\":\"🧪\",\"nested\":{\"α\":1,\"β\":2},\"z\":\"最后\"}\n",
+		"digest": "cb2af50af356eb6843ac4d4174790c25c8f829ea7e04731c506e4941d46b3d38"
+	},
+	{
+		"name": "safe-integers",
+		"value": { "max": 9007199254740991, "min": -9007199254740991, "zero": 0 },
+		"canonical": "{\"max\":9007199254740991,\"min\":-9007199254740991,\"zero\":0}\n",
+		"digest": "97096f6a06748924fd6a957747091fedf274bf0049e387fe1470e35da7a262c4"
+	},
+	{
+		"name": "empty-structures",
+		"value": { "emptyObject": {}, "emptyArray": [], "null": null },
+		"canonical": "{\"emptyArray\":[],\"emptyObject\":{},\"null\":null}\n",
+		"digest": "9d33288f334400ac7e7e93b7ef0dc501f2a01dcceabd2984fbcf18e61e602ee9"
+	}
+]

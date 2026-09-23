@@ -1,0 +1,66 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "pi-arc.audit-result.v1",
+	"title": "pi-arc SDK audit result",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"schema",
+		"ok",
+		"runId",
+		"manifestDigest",
+		"ledgerHead",
+		"findings"
+	],
+	"properties": {
+		"schema": {
+			"const": "pi-arc.audit-result.v1"
+		},
+		"ok": {
+			"type": "boolean"
+		},
+		"runId": {
+			"type": [
+				"string",
+				"null"
+			]
+		},
+		"manifestDigest": {
+			"type": "string",
+			"pattern": "^[0-9a-f]{64}$"
+		},
+		"ledgerHead": {
+			"type": "string",
+			"pattern": "^[0-9a-f]{64}$"
+		},
+		"findings": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"code",
+					"severity",
+					"message"
+				],
+				"properties": {
+					"code": {
+						"type": "string",
+						"minLength": 1
+					},
+					"severity": {
+						"type": "string",
+						"enum": [
+							"info",
+							"error"
+						]
+					},
+					"message": {
+						"type": "string",
+						"minLength": 1
+					}
+				}
+			}
+		}
+	}
+}
