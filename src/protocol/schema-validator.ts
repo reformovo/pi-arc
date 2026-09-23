@@ -1,3 +1,10 @@
+/**
+ * 严格校验 pi-arc 有意限定的 JSON Schema 子集。
+ *
+ * 这里不是通用 JSON Schema engine。新增 schema keyword 时，必须同时实现
+ * TypeScript/Python 支持，并加入共享的 valid/invalid contract fixture。
+ */
+
 import { canonicalJson } from "./canonical-json.js";
 
 type SchemaObject = { [key: string]: unknown };
@@ -24,6 +31,8 @@ function matchesType(value: unknown, expected: unknown): boolean {
 }
 
 function equals(left: unknown, right: unknown): boolean {
+	// 结构化 const/enum 使用规范化 JSON 比较，避免 mapping key 的插入顺序
+	// 导致 TypeScript 和 Python 对同一 JSON 值得出不同结论。
 	if (isRecord(left) && isRecord(right)) return canonicalJson(left as never) === canonicalJson(right as never);
 	if (Array.isArray(left) && Array.isArray(right))
 		return canonicalJson(left as never) === canonicalJson(right as never);
@@ -73,6 +82,7 @@ function validate(value: unknown, schema: SchemaObject, path: string, errors: st
 	}
 }
 
+/** 返回受支持 schema 子集产生的全部校验错误。 */
 export function validateJsonSchema(value: unknown, schema: unknown): string[] {
 	const errors: string[] = [];
 	if (!isRecord(schema)) return ["$: schema is not an object"];
@@ -80,6 +90,7 @@ export function validateJsonSchema(value: unknown, schema: unknown): string[] {
 	return errors;
 }
 
+/** 使用受支持的 schema 子集检查值，但不暴露具体错误。 */
 export function isValidJsonSchema(value: unknown, schema: unknown): boolean {
 	return validateJsonSchema(value, schema).length === 0;
 }

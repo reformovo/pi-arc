@@ -1,3 +1,10 @@
+/**
+ * 从唯一 source 生成可审阅的 JSON Schema 及其字节 digest。
+ *
+ * 生成文件属于公共 contract artifact。策略只能存在于 source.json 和本生成器中，
+ * 避免手工修改的输出意外成为第二个 source。
+ */
+
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -32,6 +39,8 @@ async function main() {
 	for (const schema of source.schemas) {
 		const relativePath = `generated/schemas/${outputName(schema.$id)}`;
 		const bytes = await readFile(relativePath);
+		// digest 覆盖包括格式和末尾换行符在内的已发布字节，因为 consumer
+		// 校验的是文件，而不是解析后的 JSON 值。
 		manifestFiles.push({
 			path: relativePath,
 			sha256: createHash("sha256").update(bytes).digest("hex"),

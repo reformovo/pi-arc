@@ -1,3 +1,10 @@
+/**
+ * 证明生成的 contract 文件完整、可复现且未被篡改。
+ *
+ * 这是只读 CI 门禁：只在内存中重新生成预期文本，绝不修复 drift。
+ * 开发者必须显式运行 generator，才能接受新的输出。
+ */
+
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
@@ -44,6 +51,8 @@ async function main() {
 	) {
 		throw new Error("schema source contains duplicate or invalid generated entries");
 	}
+	// 即使有人同时修改 manifest digest，试图认可手工改动的生成文件，
+	// 精确字节比较仍能发现 source drift。
 	for (const [file, expectedText] of generatedByName) {
 		if ((await readFile(file, "utf8")) !== expectedText) throw new Error(`${file} differs from schemas/source.json`);
 	}

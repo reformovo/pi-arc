@@ -1,6 +1,8 @@
 ---
-status: blocked
-blocked-by: WP-02 acceptance
+status: accepted
+started: 2026-09-23
+implementation-completed: 2026-09-23
+accepted: 2026-09-23
 ---
 
 # WP-03：Artifact ledger 与独立审计
@@ -32,4 +34,4 @@ git diff --check
 
 ## 停止点
 
-展示每个 crash position、篡改样例、audit 重建结果和 tracked diff 后暂停。不得引入 game resolver 或 sidecar。
+展示每个 crash position、篡改样例、audit 重建结果和 tracked diff 后暂停。用户已于 2026-09-23 确认 WP-03；WP-04 仍需单独授权后才能开始。

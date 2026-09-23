@@ -14,7 +14,7 @@ accepted: 2026-09-22
 
 - 唯一规范：[`docs/pi-arc.md`](pi-arc.md)，状态 `accepted`，SHA-256 `1d9a8039c0963ed25dbf6ce2295bc70121bb688cb34965d802ddbb5dcef83b02`。
 - 领域语言：[`CONTEXT.md`](../CONTEXT.md)。
-- accepted ADR：[`0001`](adr/0001-unconfirmed-environment-action.md)、[`0002`](adr/0002-stable-agent-harness-v4.md)、[`0003`](adr/0003-public-pi-ai-boundary.md)。
+- accepted ADR：[`0001`](adr/0001-unconfirmed-environment-action.md)、[`0002`](adr/0002-stable-agent-harness-v4.md)、[`0003`](adr/0003-public-pi-ai-boundary.md)、[`0004`](adr/0004-semantic-comments.md)。
 - 质量命令与依据：[`quality-gates.md`](design/quality-gates.md)。
 - 需求与验证：[`requirements-traceability.md`](design/requirements-traceability.md)、[`verification-matrix.md`](design/verification-matrix.md)。
 - Pi 证据：HEAD `d1230ea2000d876b479a69b8b061f9d670f262f5`；`pi-agent-core`/`pi-ai` 0.86.0；`v0.86.0..HEAD` 无 agent/ai source 或 manifest 差异。
@@ -31,6 +31,7 @@ accepted: 2026-09-22
 5. required tests 禁止真实模型、provider secret、官方 Game 下载和非 sentinel 网络。
 6. 发现 accepted 规范不可实现或互相矛盾时立即停止，先回到设计评审；handoff 不得新增公开行为。
 7. 不自动创建 Git commit。`memo-arc`、`memo`、`pi-memo`、VISTA、Pi 和 `memo-docs` 在全部 package 中保持只读。
+8. 按 [`ADR-0004`](adr/0004-semantic-comments.md) 随实现维护中文语义注释；Pi/VISTA 标识符保留英文原名。work package 评审必须检查职责边界、公开契约和非显然设计原因，不以注释数量替代人工审阅。
 
 ## 3. 明确非目标
 
@@ -107,4 +108,4 @@ git status --short
 4. WP-01 有可执行命令、明确完成定义和停止点；
 5. 旧项目删除、真实模型和真实 Game 下载没有被隐式授权。
 
-本 handoff 已被批准；WP-01 已获授权，其余 package 保持 `blocked`。任何实现开始前仍应记录当时工作树状态，但不得擅自提交 Git commit。
+本 handoff 已被批准；WP-01 至 WP-03 已通过用户审阅，WP-04 至 WP-10 保持 `blocked`。任何实现开始前仍应记录当时工作树状态，但不得擅自提交 Git commit。

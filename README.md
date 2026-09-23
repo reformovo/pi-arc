@@ -1,10 +1,10 @@
 # pi-arc
 
-`pi-arc` 是一个面向冻结本地 ARC-AGI-3 游戏的 Pi agent 宿主。规范与 implementation handoff 已接受；WP-01/WP-02 只建立了质量基础设施与公共 contract，尚未实现 ARC 业务行为。
+`pi-arc` 是一个面向冻结本地 ARC-AGI-3 游戏的 Pi agent 宿主。规范与 implementation handoff 已接受；WP-01 至 WP-03 已建立质量基础设施、公共 contract、artifact ledger 与独立审计，尚未实现 ARC 业务行为。
 
 ## 当前状态
 
-- 阶段：WP-02 版本化 contract 与共享 fixtures，已通过审阅；WP-03 等待单独授权
+- 阶段：WP-03 Artifact ledger 与独立审计已通过审阅；WP-04 等待单独授权
 - 领域语言：[CONTEXT.md](CONTEXT.md)
 - 唯一规范：[docs/pi-arc.md](docs/pi-arc.md)
 - 事实基线：[docs/design/round-0-fact-baseline.md](docs/design/round-0-fact-baseline.md)
@@ -17,6 +17,7 @@
 - accepted ADR：[docs/adr/0001-unconfirmed-environment-action.md](docs/adr/0001-unconfirmed-environment-action.md)
 - accepted ADR：[docs/adr/0002-stable-agent-harness-v4.md](docs/adr/0002-stable-agent-harness-v4.md)
 - accepted ADR：[docs/adr/0003-public-pi-ai-boundary.md](docs/adr/0003-public-pi-ai-boundary.md)
+- accepted ADR：[docs/adr/0004-semantic-comments.md](docs/adr/0004-semantic-comments.md)
 - 需求追踪：[docs/design/requirements-traceability.md](docs/design/requirements-traceability.md)
 - 第 0 轮评审：[docs/reviews/round-0.md](docs/reviews/round-0.md)
 - 第 1 轮评审：[docs/reviews/round-1.md](docs/reviews/round-1.md)
@@ -25,9 +26,10 @@
 - 第 4 轮评审：[docs/reviews/round-4.md](docs/reviews/round-4.md)
 - 第 5 轮评审：[docs/reviews/round-5.md](docs/reviews/round-5.md)
 - 当前 handoff：[docs/implementation-handoff.md](docs/implementation-handoff.md)
-- 当前 work package：[docs/work-packages/01-project-quality.md](docs/work-packages/01-project-quality.md)
+- 当前 work package：[docs/work-packages/03-artifacts-audit.md](docs/work-packages/03-artifacts-audit.md)
 - WP-01 评审材料：[docs/reviews/wp-01.md](docs/reviews/wp-01.md)
 - WP-02 评审材料：[docs/reviews/wp-02.md](docs/reviews/wp-02.md)
+- WP-03 评审材料：[docs/reviews/wp-03.md](docs/reviews/wp-03.md)
 
 ## 文档权威顺序
 
@@ -36,7 +38,7 @@
 3. implementation handoff 只在引用的规范基线上有效。
 4. `docs/design/` 是设计证据，`docs/reviews/` 是评审记录，二者都不是实现契约。
 
-`docs/pi-arc.md` 与 implementation handoff 已于 2026-09-22 accepted；ADR 0001/0002/0003 均为 accepted。WP-01 与 WP-02 已通过审阅；WP-03 至 WP-10 继续保持 `blocked`。
+`docs/pi-arc.md` 与 implementation handoff 已于 2026-09-22 accepted；ADR 0001..0004 均为 accepted。WP-01 至 WP-03 已通过审阅；WP-04 至 WP-10 继续保持 `blocked`。
 
 ## 当前禁止事项
 

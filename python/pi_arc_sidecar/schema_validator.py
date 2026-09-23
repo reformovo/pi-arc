@@ -1,3 +1,9 @@
+"""校验 pi-arc 输出的有限 JSON Schema 子集。
+
+这里有意不实现通用 JSON Schema engine。新增 keyword 时必须在两端 runtime
+同时实现。共享 contract corpus 必须覆盖该 keyword。
+"""
+
 from __future__ import annotations
 
 import re
@@ -38,6 +44,8 @@ def _matches_type(value: object, expected: object) -> bool:
 
 
 def _equals(left: object, right: object) -> bool:
+    # 结构化 const/enum 比较必须忽略 mapping 的插入顺序。比较结果必须与
+    # TypeScript validator 保持逐字节一致。
     if isinstance(left, dict) and isinstance(right, dict):
         return canonical_json(cast(dict[str, object], left)) == canonical_json(
             cast(dict[str, object], right)
@@ -108,6 +116,8 @@ def _validate(value: object, schema: SchemaObject, location: str, errors: list[s
 
 
 def validate_json_schema(value: object, schema: object) -> list[str]:
+    """返回受支持 schema 子集产生的全部校验错误。"""
+
     if not isinstance(schema, dict):
         return ["$: schema is not an object"]
     errors: list[str] = []
@@ -116,4 +126,6 @@ def validate_json_schema(value: object, schema: object) -> list[str]:
 
 
 def is_valid_json_schema(value: object, schema: object) -> bool:
+    """检查值是否有效。不暴露 validator 的诊断细节。"""
+
     return not validate_json_schema(value, schema)
