@@ -39,7 +39,7 @@ function manifest(): ArtifactManifest {
 function frame(): RawFrame {
 	const pixels = [
 		[0, 1],
-		[2, 255],
+		[2, 15],
 	];
 	return {
 		schema: "pi-arc.raw-frame.v1",
@@ -176,8 +176,8 @@ describe("artifact store", () => {
 			store.writeRawFrame({
 				...valid,
 				pixels: [
-					[0, 256],
-					[2, 255],
+					[0, 16],
+					[2, 15],
 				],
 			}),
 		).rejects.toThrow("color");

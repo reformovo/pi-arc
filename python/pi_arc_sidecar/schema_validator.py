@@ -87,8 +87,11 @@ def _validate(value: object, schema: SchemaObject, location: str, errors: list[s
     if isinstance(value, list):
         items = cast(list[object], value)
         minimum = schema.get("minItems")
+        maximum = schema.get("maxItems")
         if isinstance(minimum, int) and len(items) < minimum:
             errors.append(f"{location}: too few items")
+        if isinstance(maximum, int) and len(items) > maximum:
+            errors.append(f"{location}: too many items")
         item_schema = schema.get("items")
         if isinstance(item_schema, dict):
             typed_schema = cast(SchemaObject, item_schema)

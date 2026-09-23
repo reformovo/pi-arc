@@ -1,0 +1,72 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "pi-arc.game-cache.v1",
+	"title": "pi-arc Game cache manifest",
+	"type": "object",
+	"additionalProperties": false,
+	"required": [
+		"schema",
+		"sourceLocator",
+		"gameId",
+		"sdkVersion",
+		"runtimeVersion",
+		"seed",
+		"treeDigest",
+		"entries"
+	],
+	"properties": {
+		"schema": {
+			"const": "pi-arc.game-cache.v1"
+		},
+		"sourceLocator": {
+			"type": "string",
+			"pattern": "^arc-agi://public/[a-z0-9]{4}-[0-9a-f]{8}\\?sdk=0\\.9\\.9$"
+		},
+		"gameId": {
+			"type": "string",
+			"pattern": "^[a-z0-9]{4}-[0-9a-f]{8}$"
+		},
+		"sdkVersion": {
+			"const": "0.9.9"
+		},
+		"runtimeVersion": {
+			"const": "3.12.9"
+		},
+		"seed": {
+			"type": "integer",
+			"const": 42
+		},
+		"treeDigest": {
+			"type": "string",
+			"pattern": "^[0-9a-f]{64}$"
+		},
+		"entries": {
+			"type": "array",
+			"minItems": 2,
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"path",
+					"size",
+					"sha256"
+				],
+				"properties": {
+					"path": {
+						"type": "string",
+						"pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+					},
+					"size": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 9007199254740991
+					},
+					"sha256": {
+						"type": "string",
+						"pattern": "^[0-9a-f]{64}$"
+					}
+				}
+			}
+		}
+	}
+}

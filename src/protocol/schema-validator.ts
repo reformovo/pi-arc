@@ -61,6 +61,7 @@ function validate(value: unknown, schema: SchemaObject, path: string, errors: st
 	}
 	if (Array.isArray(value)) {
 		if (typeof schema.minItems === "number" && value.length < schema.minItems) errors.push(`${path}: too few items`);
+		if (typeof schema.maxItems === "number" && value.length > schema.maxItems) errors.push(`${path}: too many items`);
 		if (isRecord(schema.items)) {
 			value.forEach((item, index) => {
 				validate(item, schema.items as SchemaObject, `${path}[${index}]`, errors);

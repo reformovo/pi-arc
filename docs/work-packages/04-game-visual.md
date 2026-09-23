@@ -1,6 +1,8 @@
 ---
-status: blocked
-blocked-by: WP-03 acceptance
+status: accepted
+started: 2026-09-23
+implementation-completed: 2026-09-23
+accepted: 2026-09-23
 ---
 
 # WP-04：Game resolver、cache 与视觉管线
@@ -33,4 +35,4 @@ git diff --check
 
 ## 停止点
 
-展示 cache tree、digest vectors、Visual golden 和 no-network/no-old-path 证明后暂停。不得实现 sidecar。
+已展示 cache tree、digest vectors、Visual golden 和 no-network/no-old-path 证明，用户已接受 WP-04 并授权 WP-05。

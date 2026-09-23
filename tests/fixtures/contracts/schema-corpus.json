@@ -32,6 +32,32 @@
 		}
 	},
 	{
+		"name": "game-cache-valid",
+		"schema": "pi-arc.game-cache.v1",
+		"valid": true,
+		"value": {
+			"schema": "pi-arc.game-cache.v1",
+			"sourceLocator": "arc-agi://public/ls20-9607627b?sdk=0.9.9",
+			"gameId": "ls20-9607627b",
+			"sdkVersion": "0.9.9",
+			"runtimeVersion": "3.12.9",
+			"seed": 42,
+			"treeDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"entries": [
+				{
+					"path": "environment.py",
+					"size": 10,
+					"sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+				},
+				{
+					"path": "metadata.json",
+					"size": 20,
+					"sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+				}
+			]
+		}
+	},
+	{
 		"name": "domain-record-valid",
 		"schema": "pi-arc.domain-record.v1",
 		"valid": true,
@@ -65,7 +91,7 @@
 			"schema": "pi-arc.raw-frame.v1",
 			"width": 2,
 			"height": 2,
-			"pixels": [[0, 1], [2, 255]],
+			"pixels": [[0, 1], [2, 15]],
 			"runId": "run-1",
 			"environmentInstanceId": "env-1",
 			"turn": 0,
@@ -176,6 +202,132 @@
 			"manifestDigest": "4444444444444444444444444444444444444444444444444444444444444444",
 			"ledgerHead": "3333333333333333333333333333333333333333333333333333333333333333",
 			"findings": []
+		}
+	},
+	{
+		"name": "game-cache-path-traversal",
+		"schema": "pi-arc.game-cache.v1",
+		"valid": false,
+		"value": {
+			"schema": "pi-arc.game-cache.v1",
+			"sourceLocator": "arc-agi://public/ls20-9607627b?sdk=0.9.9",
+			"gameId": "ls20-9607627b",
+			"sdkVersion": "0.9.9",
+			"runtimeVersion": "3.12.9",
+			"seed": 42,
+			"treeDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"entries": [
+				{
+					"path": "../environment.py",
+					"size": 10,
+					"sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+				},
+				{
+					"path": "metadata.json",
+					"size": 20,
+					"sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+				}
+			]
+		}
+	},
+	{
+		"name": "raw-frame-palette-overflow",
+		"schema": "pi-arc.raw-frame.v1",
+		"valid": false,
+		"value": {
+			"schema": "pi-arc.raw-frame.v1",
+			"width": 1,
+			"height": 1,
+			"pixels": [[16]],
+			"runId": "run-1",
+			"environmentInstanceId": "env-1",
+			"turn": 0,
+			"frame": 0,
+			"actionId": null,
+			"contentDigest": "2222222222222222222222222222222222222222222222222222222222222222"
+		}
+	},
+	{
+		"name": "raw-frame-too-tall",
+		"schema": "pi-arc.raw-frame.v1",
+		"valid": false,
+		"value": {
+			"schema": "pi-arc.raw-frame.v1",
+			"width": 1,
+			"height": 64,
+			"pixels": [
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0],
+				[0]
+			],
+			"runId": "run-1",
+			"environmentInstanceId": "env-1",
+			"turn": 0,
+			"frame": 0,
+			"actionId": null,
+			"contentDigest": "2222222222222222222222222222222222222222222222222222222222222222"
 		}
 	},
 	{

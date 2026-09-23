@@ -45,6 +45,7 @@ def test_schema_corpus_and_validator_edges() -> None:
     assert validate_json_schema({}, {"type": "object", "required": ["required"]})
     assert validate_json_schema(1, {"type": "string"})
     assert validate_json_schema([], {"type": "array", "minItems": 1})
+    assert validate_json_schema([1, 2], {"type": "array", "maxItems": 1})
     assert validate_json_schema(
         {"known": 1, "unknown": 2},
         {

@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 阶段：WP-03 Artifact ledger 与独立审计已通过审阅；WP-04 等待单独授权
+- 阶段：WP-04 已通过审阅；WP-05 Python Environment sidecar 已获授权
 - 领域语言：[CONTEXT.md](CONTEXT.md)
 - 唯一规范：[docs/pi-arc.md](docs/pi-arc.md)
 - 事实基线：[docs/design/round-0-fact-baseline.md](docs/design/round-0-fact-baseline.md)
@@ -26,10 +26,11 @@
 - 第 4 轮评审：[docs/reviews/round-4.md](docs/reviews/round-4.md)
 - 第 5 轮评审：[docs/reviews/round-5.md](docs/reviews/round-5.md)
 - 当前 handoff：[docs/implementation-handoff.md](docs/implementation-handoff.md)
-- 当前 work package：[docs/work-packages/03-artifacts-audit.md](docs/work-packages/03-artifacts-audit.md)
+- 当前 work package：[docs/work-packages/05-sidecar.md](docs/work-packages/05-sidecar.md)
 - WP-01 评审材料：[docs/reviews/wp-01.md](docs/reviews/wp-01.md)
 - WP-02 评审材料：[docs/reviews/wp-02.md](docs/reviews/wp-02.md)
 - WP-03 评审材料：[docs/reviews/wp-03.md](docs/reviews/wp-03.md)
+- WP-04 评审材料：[docs/reviews/wp-04.md](docs/reviews/wp-04.md)
 
 ## 文档权威顺序
 
@@ -38,13 +39,13 @@
 3. implementation handoff 只在引用的规范基线上有效。
 4. `docs/design/` 是设计证据，`docs/reviews/` 是评审记录，二者都不是实现契约。
 
-`docs/pi-arc.md` 与 implementation handoff 已于 2026-09-22 accepted；ADR 0001..0004 均为 accepted。WP-01 至 WP-03 已通过审阅；WP-04 至 WP-10 继续保持 `blocked`。
+`docs/pi-arc.md` 与 implementation handoff 已于 2026-09-22 accepted；ADR 0001..0004 均为 accepted。WP-01 至 WP-04 已通过审阅；用户已授权 WP-05，WP-06 至 WP-10 继续保持 `blocked`。
 
 ## 当前禁止事项
 
-- 不实现 ARC、Pi runtime、CLI、SDK 或 Python sidecar。
-- WP-01 只允许创建项目骨架、依赖/lockfile、Biome/Ruff/TypeScript/Pyright/Vitest/Pytest 配置、门禁脚本和 CI；禁止 ARC 业务逻辑。
-- 设计期不拉取游戏数据；未来实现通过统一的数据获取流程重新拉取所需 game 数据集，不从 `memo-arc`、`memo` 或 `pi-memo` 复制游戏资产。
+- WP-05 不实现 Run controller、Pi runtime、CLI 或 SDK。
+- required checks 不访问 official catalog 或下载真实 Game；只使用 committed minimal fixture 与注入的 fake catalog。
+- 后续真实获取只能通过统一 Game resolver；不得从 `memo-arc`、`memo` 或 `pi-memo` 复制或 fallback 到旧 game 资产。
 - 不删除或改写 `memo-arc`、`memo`、`pi-memo`。
 - 不修改作为证据来源的 `VISTA`、`pi` 和 `memo-docs` 工作树。
 - 不把聊天记录或设计证据当作缺失规范的替代品。

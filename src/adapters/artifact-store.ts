@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { type NormalizedRawFrame, normalizeRawFrame, RawFrameValidationError } from "../domain/game-visual.js";
 import { canonicalJson, type JsonValue } from "../protocol/canonical-json.js";
 
 const ZERO_DIGEST = "0".repeat(64);
@@ -488,18 +489,19 @@ export class ArtifactStore {
 	}
 
 	private validateRawFrame(frame: RawFrame): void {
-		if (!isSafeInteger(frame.width) || frame.width < 1 || !isSafeInteger(frame.height) || frame.height < 1) {
-			throw new TypeError("raw frame dimensions must be positive safe integers");
+		let normalized: NormalizedRawFrame;
+		try {
+			normalized = normalizeRawFrame(frame.pixels);
+		} catch (error) {
+			if (error instanceof RawFrameValidationError) throw new ArtifactCorruptionError(error.message);
+			throw error;
 		}
-		if (frame.pixels.length !== frame.height || frame.pixels.some((row) => row.length !== frame.width)) {
+		if (normalized.width !== frame.width || normalized.height !== frame.height) {
 			throw new ArtifactCorruptionError("raw frame pixels do not match dimensions");
-		}
-		if (frame.pixels.some((row) => row.some((pixel) => !Number.isInteger(pixel) || pixel < 0 || pixel > 255))) {
-			throw new ArtifactCorruptionError("raw frame pixels contain an invalid color integer");
 		}
 		// identity 字段由外层 record/path 认证；contentDigest 有意只承诺原始
 		// grid 尺寸和 color matrix。
-		const contentDigest = digest({ width: frame.width, height: frame.height, pixels: frame.pixels });
+		const contentDigest = digest({ width: normalized.width, height: normalized.height, pixels: normalized.pixels });
 		if (frame.contentDigest !== contentDigest) throw new ArtifactCorruptionError("raw frame content digest mismatch");
 	}
 

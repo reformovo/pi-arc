@@ -53,7 +53,7 @@
 					"additionalProperties": false,
 					"required": ["id", "sourceLocator", "treeDigest"],
 					"properties": {
-						"id": { "type": "string", "pattern": "^[a-z0-9]{4}-[A-Za-z0-9]+$" },
+						"id": { "type": "string", "pattern": "^[a-z0-9]{4}-[0-9a-f]{8}$" },
 						"sourceLocator": { "type": "string", "minLength": 1 },
 						"treeDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
 					}
@@ -89,6 +89,52 @@
 					"properties": {
 						"actionBudget": { "type": "integer", "minimum": 1, "maximum": 999999 },
 						"gameOffline": { "type": "boolean" }
+					}
+				}
+			}
+		},
+		{
+			"$schema": "https://json-schema.org/draft/2020-12/schema",
+			"$id": "pi-arc.game-cache.v1",
+			"title": "pi-arc Game cache manifest",
+			"type": "object",
+			"additionalProperties": false,
+			"required": [
+				"schema",
+				"sourceLocator",
+				"gameId",
+				"sdkVersion",
+				"runtimeVersion",
+				"seed",
+				"treeDigest",
+				"entries"
+			],
+			"properties": {
+				"schema": { "const": "pi-arc.game-cache.v1" },
+				"sourceLocator": {
+					"type": "string",
+					"pattern": "^arc-agi://public/[a-z0-9]{4}-[0-9a-f]{8}\\?sdk=0\\.9\\.9$"
+				},
+				"gameId": { "type": "string", "pattern": "^[a-z0-9]{4}-[0-9a-f]{8}$" },
+				"sdkVersion": { "const": "0.9.9" },
+				"runtimeVersion": { "const": "3.12.9" },
+				"seed": { "type": "integer", "const": 42 },
+				"treeDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+				"entries": {
+					"type": "array",
+					"minItems": 2,
+					"items": {
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["path", "size", "sha256"],
+						"properties": {
+							"path": {
+								"type": "string",
+								"pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+							},
+							"size": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+							"sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+						}
 					}
 				}
 			}
@@ -166,12 +212,18 @@
 			],
 			"properties": {
 				"schema": { "const": "pi-arc.raw-frame.v1" },
-				"width": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
-				"height": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+				"width": { "type": "integer", "minimum": 1, "maximum": 64 },
+				"height": { "type": "integer", "minimum": 1, "maximum": 64 },
 				"pixels": {
 					"type": "array",
 					"minItems": 1,
-					"items": { "type": "array", "minItems": 1, "items": { "type": "integer", "minimum": 0, "maximum": 255 } }
+					"maxItems": 64,
+					"items": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 64,
+						"items": { "type": "integer", "minimum": 0, "maximum": 15 }
+					}
 				},
 				"runId": { "type": "string", "minLength": 1 },
 				"environmentInstanceId": { "type": "string", "minLength": 1 },

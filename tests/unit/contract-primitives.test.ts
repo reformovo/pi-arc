@@ -50,6 +50,7 @@ describe("contract primitives", () => {
 		expect(validateJsonSchema({}, { type: "object", required: ["required"] })).not.toHaveLength(0);
 		expect(validateJsonSchema(1, { type: "string" })).not.toHaveLength(0);
 		expect(validateJsonSchema([], { type: "array", minItems: 1 })).not.toHaveLength(0);
+		expect(validateJsonSchema([1, 2], { type: "array", maxItems: 1 })).not.toHaveLength(0);
 		expect(
 			validateJsonSchema(
 				{ known: 1, unknown: 2 },
