@@ -24,6 +24,7 @@ export type ArtifactRecordType =
 	| "turn.commit"
 	| "tool.rejection"
 	| "knowledge.commit"
+	| "checkpoint.request"
 	| "context.boundary"
 	| "terminal.intent"
 	| "post_terminal.evidence";

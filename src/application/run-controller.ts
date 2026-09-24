@@ -16,6 +16,7 @@ export type ArtifactRecordType =
 	| "turn.commit"
 	| "tool.rejection"
 	| "knowledge.commit"
+	| "checkpoint.request"
 	| "context.boundary"
 	| "terminal.intent"
 	| "post_terminal.evidence";
@@ -344,7 +345,8 @@ export class RunController {
 			actionId: null,
 		};
 		const controller = new RunController(binding.manifest.runId, instanceId, initialTurn, ports);
-		await controller.publishFrames(0, null, frames(opened.frames));
+		const initialFrames = frames(opened.frames);
+		await controller.publishFrames(0, null, initialFrames);
 		await ports.artifacts.appendDomain("run.binding", ports.now(), {
 			runId: controller.runId,
 			game: binding.manifest.game ?? null,
@@ -357,7 +359,7 @@ export class RunController {
 			attempt: initialTurn.attempt,
 			generation: 0,
 		});
-		await controller.commitTurn(initialTurn, null);
+		await controller.commitTurn(initialTurn, null, null, initialFrames.length);
 		if (initial.state === "WIN") await controller.finish("WIN");
 		return controller;
 	}
@@ -695,7 +697,12 @@ export class RunController {
 		if (levelChanged && receipt.resultState !== "WIN") next.attemptStatus = "active";
 		// RESET 的 retry_state 与新 Attempt 边界在同一 Turn commit 中生效；
 		// WP-07 再把该已提交值物化为活动 WORKING 和 delivery envelope。
-		await this.commitTurn(next, receipt.receiptDigest, intent.action.name === "RESET" ? intent.retryState : null);
+		await this.commitTurn(
+			next,
+			receipt.receiptDigest,
+			intent.action.name === "RESET" ? intent.retryState : null,
+			receipt.frames.length,
+		);
 		this.current = next;
 		this.pending = null;
 		if (receipt.resultState === "WIN") {
@@ -704,12 +711,18 @@ export class RunController {
 		}
 	}
 
-	private async commitTurn(turn: Turn, receiptDigest: string | null, retryState: string | null = null): Promise<void> {
+	private async commitTurn(
+		turn: Turn,
+		receiptDigest: string | null,
+		retryState: string | null,
+		frameCount: number,
+	): Promise<void> {
 		await this.ports.artifacts.appendDomain("turn.commit", this.ports.now(), {
 			...turn,
 			receiptDigest,
 			retryState,
 			boundaryPending: retryState !== null,
+			frameCount,
 		});
 	}
 

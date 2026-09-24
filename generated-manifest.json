@@ -14,7 +14,7 @@
 		},
 		{
 			"path": "generated/schemas/pi-arc-domain-record-v1.schema.json",
-			"sha256": "7efbe9887852610877d4d3d44a9abae3bd100d3786812f8eb9a28d66a79d0a76"
+			"sha256": "c72adb368832d72652640f75b66f11841053d2207ad459859a32529eabafd92e"
 		},
 		{
 			"path": "generated/schemas/pi-arc-runtime-record-v1.schema.json",

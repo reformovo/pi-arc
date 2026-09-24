@@ -1,6 +1,8 @@
 ---
-status: blocked
-blocked-by: WP-06 acceptance
+status: accepted
+started: 2026-09-24
+completed: 2026-09-24
+accepted: 2026-09-24
 ---
 
 # WP-07：模型工具与知识边界
@@ -13,7 +15,7 @@ blocked-by: WP-06 acceptance
 
 - 全部工具的 exact input/output、限制、normal/reject/terminal 场景；
 - history/inspect/read_pixels 的 artifact-only reads；
-- prediction-before-play prompt contract 与 result evidence；
+- 以 VISTA 模型可见文本为基线的系统提示、九个工具 description/schema hint、prediction-before-play contract 与 result evidence；
 - GUIDE/WORKING versioned replacement、stable invocation/anchor safe replay；
 - RESET pending retry_state activation、checkpoint gate/commit/delivery replay。
 
