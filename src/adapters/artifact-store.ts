@@ -389,6 +389,22 @@ export class ArtifactStore {
 		return report;
 	}
 
+	/** 恢复时读取已验证的完整 domain 链；不把 runtime transcript 当作权威状态。 */
+	readDomain(): Promise<readonly DomainRecord[]> {
+		return this.readDomainRecords();
+	}
+
+	/** 只读查询 write-once terminal；不存在时返回 undefined。 */
+	async readTerminal(): Promise<TerminalRecord | undefined> {
+		const findings: AuditFinding[] = [];
+		const terminal = await this.readOptionalJson<TerminalRecord>("terminal.json", findings, "terminal_corrupt");
+		if (findings.length > 0) throw new ArtifactCorruptionError("terminal.json cannot be read");
+		if (terminal !== undefined && terminal.schema !== "pi-arc.terminal.v1") {
+			throw new ArtifactCorruptionError("terminal schema is invalid");
+		}
+		return terminal;
+	}
+
 	private async readDomainRecords(): Promise<DomainRecord[]> {
 		const records = await this.readJsonLines<DomainRecord>("domain.jsonl");
 		let previous = ZERO_DIGEST;

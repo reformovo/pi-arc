@@ -1,6 +1,8 @@
 ---
-status: blocked
-blocked-by: WP-05 acceptance
+status: accepted
+started: 2026-09-23
+completed: 2026-09-23
+accepted: 2026-09-24
 ---
 
 # WP-06：Run lifecycle 与 Action controller
@@ -33,4 +35,4 @@ git diff --check
 
 ## 停止点
 
-逐行展示 effect/crash matrix 结果和每个 terminal classification 后暂停。不得实现模型工具或 Pi adapter。
+已在 `docs/reviews/wp-06.md` 逐行展示 effect/crash matrix 与 terminal classification；停在用户评审点。不得实现模型工具或 Pi adapter。

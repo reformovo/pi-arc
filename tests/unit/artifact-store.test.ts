@@ -227,4 +227,11 @@ describe("artifact store", () => {
 			expect.arrayContaining(["runtime_corrupt", "index_corrupt", "terminal_missing"]),
 		);
 	});
+
+	it("fails closed when recovery reads a corrupt terminal record", async () => {
+		const { root, store } = await makeStore();
+		await completeArchive(store);
+		await writeFile(path.join(root, "terminal.json"), "not-json", "utf8");
+		await expect(store.readTerminal()).rejects.toThrow("terminal.json cannot be read");
+	});
 });
