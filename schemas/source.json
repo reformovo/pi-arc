@@ -189,7 +189,14 @@
 				},
 				"eventType": {
 					"type": "string",
-					"enum": ["model.requested", "model.responded", "tool.completed", "tool.rejected", "context.boundary"]
+					"enum": [
+						"model.requested",
+						"model.responded",
+						"tool.admitted",
+						"tool.completed",
+						"tool.rejected",
+						"context.boundary"
+					]
 				},
 				"payload": { "type": "object" }
 			}

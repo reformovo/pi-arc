@@ -29,6 +29,7 @@
 			"enum": [
 				"model.requested",
 				"model.responded",
+				"tool.admitted",
 				"tool.completed",
 				"tool.rejected",
 				"context.boundary"

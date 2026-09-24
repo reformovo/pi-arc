@@ -18,7 +18,7 @@
 		},
 		{
 			"path": "generated/schemas/pi-arc-runtime-record-v1.schema.json",
-			"sha256": "e60f453f8b6e3dc2ed73bc8320c9ff23df6eeccbdbaf5254c6a4821b53b0110e"
+			"sha256": "b255579599d57a3153d86624969b3706f9a1170fc48f83446514d6c0dfeac850"
 		},
 		{
 			"path": "generated/schemas/pi-arc-raw-frame-v1.schema.json",

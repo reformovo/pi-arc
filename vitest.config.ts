@@ -16,7 +16,7 @@ export default defineConfig({
 				statements: 90,
 			},
 		},
-		include: ["tests/unit/**/*.test.ts", "tests/integration/sidecar.test.ts"],
+		include: ["tests/unit/**/*.test.ts", "tests/integration/sidecar.test.ts", "tests/integration/pi-runtime.test.ts"],
 		passWithNoTests: false,
 		restoreMocks: true,
 		setupFiles: ["tests/support/vitest-network-setup.ts"],

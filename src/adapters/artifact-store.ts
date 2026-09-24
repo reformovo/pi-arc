@@ -51,7 +51,13 @@ export interface RuntimeRecord extends Record<string, JsonValue> {
 	schema: "pi-arc.runtime-record.v1";
 	sequence: number;
 	recordedAt: string;
-	eventType: "model.requested" | "model.responded" | "tool.completed" | "tool.rejected" | "context.boundary";
+	eventType:
+		| "model.requested"
+		| "model.responded"
+		| "tool.admitted"
+		| "tool.completed"
+		| "tool.rejected"
+		| "context.boundary";
 	payload: Record<string, JsonValue>;
 }
 
@@ -270,6 +276,11 @@ export class ArtifactStore {
 		};
 		await this.writeJsonLines("runtime.jsonl", [...records, record]);
 		return record;
+	}
+
+	/** 只读取已校验的诊断记录；调用方不得据此推断 Environment 状态。 */
+	readRuntime(): Promise<readonly RuntimeRecord[]> {
+		return this.readRuntimeRecords();
 	}
 
 	/** 校验一个不可变 Raw Frame，并发布到其稳定 Turn/Frame 路径。 */

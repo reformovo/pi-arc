@@ -1,6 +1,8 @@
 ---
-status: blocked
-blocked-by: WP-07 acceptance
+status: accepted
+started: 2026-09-24
+completed: 2026-09-24
+accepted: 2026-09-24
 ---
 
 # WP-08：Pi runtime adapter 与 Recovery
