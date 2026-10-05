@@ -14,6 +14,7 @@ accepted: 2026-09-22
 - 当前状态为 `accepted`，但本文件本身不是 implementation handoff。
 - 第 0 轮已确认来源、版本和证据类别；第 1 轮已确认领域语言、目标和边界；第 2 轮已确认外部行为契约；第 3 轮已确认持久性与失败语义；第 4 轮已确认质量与验证门禁。
 - 第 5 轮已完成反向审阅、遗留项处置和用户确认。
+- 后续用户已确认 [ADR-0005](adr/0005-official-sdk-acquisition-trust.md)：信任官方 Game，允许官方 SDK 在独立获取进程中加载 Game code 并接触 ARC 下载凭据；正式 Run 的 offline sidecar 边界不变。
 - 旧项目退役仍作为明确排除出首批实现的跨项目 gate，不影响 `pi-arc` v1 规范接受。
 
 ## 2. 设计过程约束
@@ -613,16 +614,16 @@ Game 权威来源固定为 `arc-agi==0.9.9` 暴露的官方 public environment c
 resolver 行为固定如下：
 
 1. 只接受完整 versioned Game ID；catalog 必须精确返回同一 ID，禁止从 base ID 猜测最新版本。
-2. cache miss 且未启用 game-offline 时，通过官方 SDK 下载到 `--game-cache` 下的新 staging directory；下载完成前不得被 Run 使用。
+2. cache miss 且未启用 game-offline 时，通过独立获取进程中的官方 SDK 下载到 `--game-cache` 下的新 staging directory；允许 `Arcade.make()` 在此阶段临时加载官方 Game code，并允许该进程持有 ARC 下载凭据。获取进程必须清除模型/provider/OAuth 凭据与 Pi 配置，不传入 Pi session 或 Run artifact root；ARC 凭据不得写入缓存、日志或运行产物。获取进程在交付下载结果后退出，校验与发布完成前不得被 Run 使用。获取阶段的 Environment 初始化结果不作为 Run 的初始 Observation，也不作为 Action/receipt Evidence。
 3. cache miss 且启用 game-offline 时拒绝启动。cache hit 必须重新验证 manifest 和全部文件，不得仅凭目录存在通过。
 4. cache 发布布局固定为 `<game-cache>/<full-game-id>/<tree-digest>/manifest.json` 和同级 `environment/`。cache root、Game 目录和 content root 都不能是 symlink。
 5. cache manifest schema 固定为 `pi-arc.game-cache.v1`，包含 source locator、完整 Game ID、SDK/runtime 版本、seed 和按 `environment/` 内相对 POSIX path 排序的 `{path,size,sha256}` entries；manifest 本身不进入 entries。
 6. tree digest 是上述 entries 的 canonical JSON SHA-256。`environment/` 禁止 symlink、非普通文件、路径穿越和未列文件；必须包含 `metadata.json` 和至少一个 `.py` Environment 文件。
 7. 已发布 cache 不原地更新。相同 locator 与 digest 可复用；同 locator 不同 digest 必须拒绝并要求显式重新获取到新 digest 目录。
 8. Run manifest 固定记录 source locator、tree digest 和 dependency versions。resolver 禁止扫描或 fallback 到 `memo-arc`、`memo`、`pi-memo`。
-9. 下载的 Environment code 只能在 Python sidecar 中加载。进入 Run 后 sidecar 必须以 ARC SDK offline mode 启动、清除 provider/OAuth secret 和 proxy 配置、不注入网络 client、把 `environment/` 作为只读输入，并且不得获得 Pi session 或整个 artifact root 的路径；controller 只通过第 15.8 节 wire contract 接收结果。[R-035、R-047、R-058]
+9. 除第 2 项的官方 SDK 获取阶段外，下载的 Environment code 只能在 Python Environment sidecar 中加载。正式 Run 必须在与获取进程分离的 sidecar 中从已验证缓存重新创建 Environment；sidecar 必须以 ARC SDK offline mode 启动、清除 ARC 下载凭据、provider/OAuth secret 和 proxy 配置、不注入网络 client、把 `environment/` 作为只读输入，并且不得获得 Pi session 或整个 artifact root 的路径；controller 只通过第 15.8 节 wire contract 接收结果。[R-035、R-047、R-058]
 
-official catalog 是 v1 明确选择的代码信任根；进程边界不是针对恶意 Python 的安全 sandbox，digest 也只固定内容而不证明内容安全。required tests 使用 committed minimal fake game fixture 和 network/secret sentinel 验证 resolver 与 sidecar containment，不访问 official catalog；真实下载只属于显式的人工 smoke，不是 required check。
+official catalog 是 v1 明确选择的代码信任根；用户接受官方 Game code 在获取阶段接触 ARC 下载凭据及该进程可访问资源的风险（见 [ADR-0005](adr/0005-official-sdk-acquisition-trust.md)）。进程边界不是针对恶意 Python 的安全 sandbox，digest 也只固定内容而不证明内容安全。required tests 使用 committed minimal fake game fixture 和 network/secret sentinel 验证 resolver 与 sidecar containment，不访问 official catalog；真实下载只属于显式的人工 smoke，不是 required check。
 
 ### 15.7 Run artifact 稳定入口与 record family
 

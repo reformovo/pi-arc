@@ -33,7 +33,7 @@
 			"properties": {
 				"id": {
 					"type": "string",
-					"pattern": "^[a-z0-9]{4}-[0-9a-f]{8}$"
+					"pattern": "^[a-z0-9]{4}-[A-Za-z0-9]+$"
 				},
 				"sourceLocator": {
 					"type": "string",

@@ -33,6 +33,7 @@ export interface PiRuntimeOptions {
 	models: Models;
 	provider: string;
 	modelId: string;
+	thinkingLevel?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 	laneId: string;
 	systemPrompt: string;
 	evidence: PiToolEvidence;
@@ -135,6 +136,7 @@ export class PiArcRuntime {
 				session: options.session,
 				models: options.models,
 				model,
+				...(options.thinkingLevel === undefined ? {} : { thinkingLevel: options.thinkingLevel }),
 				tools: adapter.tools(),
 				systemPrompt: options.systemPrompt,
 				toolExecution: "sequential",
@@ -206,6 +208,12 @@ export class PiArcRuntime {
 		if (!this.openResolved) throw new Error("open operation must be resolved before a new prompt");
 		if (this.waitingOperationId !== null) throw new Error("waiting operation must settle before a new prompt");
 		if (this.progress !== null) throw new Error("prior model progress policy is unresolved");
+		// RESET 可以在本次进程的上一轮 play 中刚提交；同样需要先让 Pi
+		// 持久接纳新 Context，再确认 knowledge boundary 并开放下一次 Action。
+		if (this.pendingRecovery === null) {
+			const boundary = await this.options.boundary.prepare(this.authority);
+			if (boundary !== null) this.pendingRecovery = { prompt: boundary.prompt, boundaryId: boundary.boundaryId };
+		}
 		this.progress = { beforeTurn: this.authority.turn.turn, stage: 0 };
 		const outcome = await this.callModel(this.pendingRecovery ?? { prompt, boundaryId: null });
 		this.pendingRecovery = null;

@@ -1,7 +1,7 @@
 ---
 status: accepted
-spec-baseline: pi-arc-v1-2026-09-22
-spec-sha256: 1d9a8039c0963ed25dbf6ce2295bc70121bb688cb34965d802ddbb5dcef83b02
+spec-baseline: pi-arc-v1-adr-0005
+spec-sha256: 526bd54dd284b251e798e824df73b85a0c2b6ae8702c129abb9621c062116c70
 created: 2026-09-22
 accepted: 2026-09-22
 ---
@@ -12,9 +12,9 @@ accepted: 2026-09-22
 
 ## 1. 权威基线
 
-- 唯一规范：[`docs/pi-arc.md`](pi-arc.md)，状态 `accepted`，SHA-256 `1d9a8039c0963ed25dbf6ce2295bc70121bb688cb34965d802ddbb5dcef83b02`。
+- 唯一规范：[`docs/pi-arc.md`](pi-arc.md)，状态 `accepted`，当前基线 `pi-arc-v1-adr-0005`，SHA-256 `526bd54dd284b251e798e824df73b85a0c2b6ae8702c129abb9621c062116c70`。此前 WP-01 至 WP-08 的评审仍记录原基线；本次变更仅调整 WP-09 获取阶段的代码信任与凭据边界，不追溯改写历史验收。
 - 领域语言：[`CONTEXT.md`](../CONTEXT.md)。
-- accepted ADR：[`0001`](adr/0001-unconfirmed-environment-action.md)、[`0002`](adr/0002-stable-agent-harness-v4.md)、[`0003`](adr/0003-public-pi-ai-boundary.md)、[`0004`](adr/0004-semantic-comments.md)。
+- accepted ADR：[`0001`](adr/0001-unconfirmed-environment-action.md)、[`0002`](adr/0002-stable-agent-harness-v4.md)、[`0003`](adr/0003-public-pi-ai-boundary.md)、[`0004`](adr/0004-semantic-comments.md)、[`0005`](adr/0005-official-sdk-acquisition-trust.md)。
 - 质量命令与依据：[`quality-gates.md`](design/quality-gates.md)。
 - 需求与验证：[`requirements-traceability.md`](design/requirements-traceability.md)、[`verification-matrix.md`](design/verification-matrix.md)。
 - Pi 证据：HEAD `d1230ea2000d876b479a69b8b061f9d670f262f5`；`pi-agent-core`/`pi-ai` 0.86.0；`v0.86.0..HEAD` 无 agent/ai source 或 manifest 差异。
@@ -108,4 +108,4 @@ git status --short
 4. WP-01 有可执行命令、明确完成定义和停止点；
 5. 旧项目删除、真实模型和真实 Game 下载没有被隐式授权。
 
-本 handoff 已被批准；WP-01 至 WP-05 已通过用户审阅，用户已授权 WP-06，WP-07 至 WP-10 保持 `blocked`。WP-05 提交已获用户授权；WP-06 不自动提交。
+本 handoff 已被批准；WP-01 至 WP-09 已通过用户审阅。用户已于 2026-10-06 审核通过 WP-09 并授权提交；ADR-0005 获取信任边界、获取进程凭据过滤、获取与 Run 实例分离、匿名 ARC 获取策略及新基线 check/build 回归均已完成，见 [WP-09 评审记录](reviews/wp-09.md)。WP-10 因尚未获得单独实施授权而保持 `blocked`。本次授权只包含 WP-09 提交，不授权远端推送、真实下载、真实模型调用或 WP-10 开始。

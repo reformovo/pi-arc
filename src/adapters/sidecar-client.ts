@@ -7,7 +7,20 @@
  */
 
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { mkdirSync } from "node:fs";
+import path from "node:path";
 import { createInterface, type Interface } from "node:readline";
+
+const PROCESS_KEYS = ["PATH", "SystemRoot", "WINDIR", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "TZ"] as const;
+
+/** 白名单只保留解释器运行配置；未知 provider 的凭据或 Pi 路径也不会被透传。 */
+export function processEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const result: NodeJS.ProcessEnv = {};
+	for (const key of PROCESS_KEYS) {
+		if (source[key] !== undefined) result[key] = source[key];
+	}
+	return result;
+}
 
 export const SIDECAR_SCHEMA = "pi-arc.sidecar.v1" as const;
 export type SidecarRequestType = "open" | "get_anchor" | "submit_action" | "lookup_action" | "close";
@@ -112,6 +125,7 @@ export class SidecarClient {
 	>();
 	private sequence = 0;
 	private closed = false;
+	private readonly exited: Promise<void>;
 	private readonly openPayload: Record<string, unknown>;
 
 	constructor(options: SidecarProcessOptions) {
@@ -122,23 +136,24 @@ export class SidecarClient {
 			seed: options.seed,
 		};
 		const python = options.python ?? ".venv/bin/python";
-		const childEnv: NodeJS.ProcessEnv = { ...process.env, ...options.spawnEnv };
-		for (const key of Object.keys(childEnv)) {
-			if (/(?:API_KEY|AUTHORIZATION|OAUTH|TOKEN|SECRET)/i.test(key)) delete childEnv[key];
+		const cacheRoot = path.resolve(options.cacheRoot);
+		mkdirSync(cacheRoot, { recursive: true });
+		const childEnv = processEnvironment({ ...process.env, ...options.spawnEnv });
+		// 故障注入只允许调用者显式传入；宿主环境不能改变正式 Run 的执行行为。
+		if (options.spawnEnv?.PI_ARC_SIDECAR_CRASH_AFTER_ACCEPT === "1") {
+			childEnv.PI_ARC_SIDECAR_CRASH_AFTER_ACCEPT = "1";
 		}
-		delete childEnv.ARTIFACT_ROOT;
-		delete childEnv.PI_SESSION;
 		childEnv.PI_ARC_BLOCK_NETWORK = "1";
-		childEnv.PYTHONPATH = options.pythonPath ?? "python";
+		childEnv.PYTHONPATH = path.resolve(options.pythonPath ?? "python");
 		this.child = spawn(
-			python,
+			python.includes(path.sep) ? path.resolve(python) : python,
 			[
 				"-m",
 				"pi_arc_sidecar.sidecar",
 				"--environment-root",
-				options.environmentRoot,
+				path.resolve(options.environmentRoot),
 				"--cache-root",
-				options.cacheRoot,
+				cacheRoot,
 				"--game-id",
 				options.gameId,
 				"--seed",
@@ -150,9 +165,14 @@ export class SidecarClient {
 			],
 			{
 				env: childEnv,
+				// SDK import 会读取 cwd 的 .env；不能让它重新引入宿主凭据。
+				cwd: cacheRoot,
 				stdio: ["pipe", "pipe", "pipe"],
 			},
 		);
+		this.exited = new Promise((resolve) => {
+			this.child.once("close", () => resolve());
+		});
 		this.lines = createInterface({ input: this.child.stdout });
 		// 丢弃 sidecar 诊断 stderr，避免 Game code 的日志填满 pipe 阻塞协议。
 		this.child.stderr.resume();
@@ -227,11 +247,12 @@ export class SidecarClient {
 	}
 
 	/** 关闭 sidecar，确保子进程和 readline 资源都被回收。 */
-	close(): void {
-		if (this.closed) return;
+	async close(): Promise<void> {
+		if (this.closed) return this.exited;
 		this.closed = true;
 		this.lines.close();
 		this.child.stdin.end();
 		if (!this.child.killed) this.child.kill();
+		await this.exited;
 	}
 }

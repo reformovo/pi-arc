@@ -11,12 +11,14 @@
 			"biome.json",
 			"package.json",
 			"tsconfig.json",
+			"tsconfig.build.json",
 			"generated-manifest.json",
 			"!package-lock.json",
 			"!coverage",
 			"!dist",
 			"!game-cache",
 			"!node_modules",
+			"!!.delta",
 			"!run-artifacts",
 			"!tmp"
 		]

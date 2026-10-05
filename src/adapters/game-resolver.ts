@@ -14,7 +14,7 @@ export const ARC_AGI_SDK_VERSION = "0.9.9";
 export const PYTHON_RUNTIME_VERSION = "3.12.9";
 export const GAME_SEED = 42;
 
-const FULL_GAME_ID = /^[a-z0-9]{4}-[0-9a-f]{8}$/;
+export const FULL_GAME_ID = /^[a-z0-9]{4}-[A-Za-z0-9]+$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 
 /** Game cache manifest 中一项经过摘要的 Environment 文件。 */

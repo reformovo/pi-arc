@@ -24,6 +24,7 @@ dev = [
 target-version = "py312"
 line-length = 100
 extend-exclude = [
+    ".delta",
     ".venv",
     "build",
     "coverage",

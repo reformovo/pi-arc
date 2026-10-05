@@ -1,6 +1,6 @@
 ---
 status: blocked
-blocked-by: WP-09 acceptance
+blocked-by: 单独的用户实施授权（WP-09 已 accepted）
 ---
 
 # WP-10：最终 conformance 与退役就绪证据

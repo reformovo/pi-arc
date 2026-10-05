@@ -142,14 +142,17 @@ describe("Game resolver", () => {
 		const catalog = new FixtureCatalog();
 		const resolver = new GameResolver(catalog);
 
-		for (const gameId of ["ls20", "ls20-latest", "../ls20-9607627b", "LS20-9607627B"]) {
+		for (const gameId of ["ls20", "ls20-", "../ls20-9607627b", "LS20-9607627B"]) {
 			await expect(resolver.resolve({ gameId, cacheRoot, offline: true })).rejects.toMatchObject({
 				code: "invalid_game_id",
 			});
 		}
-		await expect(resolver.resolve({ gameId: GAME_ID, cacheRoot, offline: true })).rejects.toMatchObject({
-			code: "game_cache_miss",
-		});
+		for (const gameId of [GAME_ID, "abcd-XYZ123", "ls20-latest"]) {
+			// 格式合法不等于 catalog 存在；不可从 suffix 猜测最新版本或回退。
+			await expect(resolver.resolve({ gameId, cacheRoot, offline: true })).rejects.toMatchObject({
+				code: "game_cache_miss",
+			});
+		}
 		expect(catalog.calls).toBe(0);
 	});
 

@@ -6,11 +6,11 @@
 		},
 		{
 			"path": "generated/schemas/pi-arc-run-manifest-v1.schema.json",
-			"sha256": "1948ac6ad8226c2e2082aab6b37e032f619dfb1f01a2b8176bd9eb4cb6bd84ce"
+			"sha256": "ae975b64b7e67848e9db1a3256522de2f6e3c0f22cf9aa1ce05323fe136e2eb1"
 		},
 		{
 			"path": "generated/schemas/pi-arc-game-cache-v1.schema.json",
-			"sha256": "c15c5f7676d7419d626195aee515d4258479c59bec09026b92deba54399a3621"
+			"sha256": "0722b3181f91087a2660be654d9cd4e2cfbbd9f1b1f77ade3d9577e0774ce4c2"
 		},
 		{
 			"path": "generated/schemas/pi-arc-domain-record-v1.schema.json",

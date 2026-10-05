@@ -20,11 +20,11 @@
 		},
 		"sourceLocator": {
 			"type": "string",
-			"pattern": "^arc-agi://public/[a-z0-9]{4}-[0-9a-f]{8}\\?sdk=0\\.9\\.9$"
+			"pattern": "^arc-agi://public/[a-z0-9]{4}-[A-Za-z0-9]+\\?sdk=0\\.9\\.9$"
 		},
 		"gameId": {
 			"type": "string",
-			"pattern": "^[a-z0-9]{4}-[0-9a-f]{8}$"
+			"pattern": "^[a-z0-9]{4}-[A-Za-z0-9]+$"
 		},
 		"sdkVersion": {
 			"const": "0.9.9"

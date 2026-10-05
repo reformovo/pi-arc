@@ -8,7 +8,7 @@ async function collectMarkdown(root) {
 	/** @type {string[]} */
 	const files = [];
 	for (const entry of await readdir(root, { withFileTypes: true })) {
-		if (entry.name === ".git" || entry.name === "node_modules" || entry.name === ".venv") continue;
+		if ([".git", ".delta", "node_modules", ".venv"].includes(entry.name)) continue;
 		const candidate = path.join(root, entry.name);
 		if (entry.isDirectory()) files.push(...(await collectMarkdown(candidate)));
 		else if (entry.isFile() && entry.name.endsWith(".md")) files.push(candidate);
