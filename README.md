@@ -75,7 +75,7 @@ runtime 指标通过 `payload.phase=provider_request` 区分每次 provider requ
 
 离线缓存诊断现在用受检查的 `scripts/diagnose-cache.mjs`，须先 `npm run build`。各 probe 默认离线，真实模式须显式授权和 `--live`，不能把诊断 setup 重放当模型通关成绩。运行产物与 `.env` 不纳入源码提交；Git 忽略不保证共享编辑保密。
 
-[笔记语义策略](docs/design/knowledge-summary-policy.md) 仅为下一阶段评审方案，目前没有修改 TASK/system 提示词、笔记写入频率或开启新游戏实验。
+[笔记语义策略](docs/design/knowledge-summary-policy.md) 已有仅离线的 `baseline` / `notes-v1` addendum 候选与既有 FT09 人工 rubric 标注；新的 agent 策略不声称与 VISTA 逐字对齐。生产 TASK/system、公开 CLI/SDK/工具 schema 与默认笔记写入策略不变，没有开启新游戏实验或测得语义收益。
 
 ## 文档权威顺序
 
