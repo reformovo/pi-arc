@@ -93,4 +93,3 @@ cacheWrite=0不是故障证据。滚动删除早期图片可能破坏稳定prefi
 组合门禁：Node22.23.1/npm10.9.8/Python3.12.9，npm run check、npm run build、git diff --check全部通过。TS166、Python29、contract双端各4、integration51，数量跨gate重叠。coverage statements90.21%、branches85.35%、functions95.32%、lines93.65%。未调用真实模型或下载Game。
 
 独立审阅去噪：stderr.resume进入flowing模式会消费丢弃流，不采纳“Critical未drain”结论；receipt.turn=baseTurn+1是双端协议和fixture验证的规则，不采纳“可能公式错”结论；缺.venv导致ENOENT属于审阅环境未准备，不作为业务缺陷。SDK自定义logger与官方Game信任边界需按实证讨论，不将任意恶意Game绕过Python monkeypatch称为已承诺的OS sandbox破坏。direct main()的fd隔离仅测试入口不同，生产明确以python -m启动，暂无生产缺陷复现。
-
