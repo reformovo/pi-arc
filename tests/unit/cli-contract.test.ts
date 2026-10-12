@@ -3,6 +3,7 @@
 import { createModels } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 import { runCli } from "../../src/composition/cli.js";
+import { InvalidCliModelConfiguration } from "../../src/composition/cli-models.js";
 import { createPiArcHost } from "../../src/composition/index.js";
 import type { AuditResult, PiArcHost, RunResult } from "../../src/composition/pi-arc-host.js";
 
@@ -55,7 +56,7 @@ function fakeHost(outcomeClass: RunResult["outcomeClass"]): PiArcHost {
 	};
 }
 
-async function invoke(argv: string[], host: PiArcHost) {
+async function invoke(argv: string[], host: Parameters<typeof runCli>[1]) {
 	const stdout: string[] = [];
 	const stderr: string[] = [];
 	const code = await runCli(
@@ -98,6 +99,36 @@ describe("CLI exact surface", () => {
 			expect(output.code).toBe(2);
 			expect(output.events).toHaveLength(1);
 			expect(output.events[0]?.type).toBe("run.rejected");
+		}
+	});
+
+	it("validates static flags before creating a host", async () => {
+		for (const argv of [["play"], [...flags, "--action-budget", "0"], [...flags, "--thinking", "impossible"]]) {
+			let initialized = false;
+			const output = await invoke(argv, () => {
+				initialized = true;
+				throw new Error("must not initialize");
+			});
+			expect(output.code).toBe(2);
+			expect(initialized).toBe(false);
+		}
+	});
+
+	it("projects model initialization failures without exposing exception details", async () => {
+		for (const argv of [flags, ["resume", "--artifacts", "/tmp/artifacts"]]) {
+			for (const [error, code, reason] of [
+				[new InvalidCliModelConfiguration(), 2, "invalid_model_configuration"],
+				[new Error("private configuration contents"), 3, "model_configuration_unavailable"],
+			] as const) {
+				const output = await invoke(argv, () => {
+					throw error;
+				});
+				expect(output.code).toBe(code);
+				expect(output.events).toEqual([
+					expect.objectContaining({ sequence: 1, type: "run.rejected", data: { reason } }),
+				]);
+				expect(output.stderr.join("")).toBe(`pi-arc: ${reason}\n`);
+			}
 		}
 	});
 

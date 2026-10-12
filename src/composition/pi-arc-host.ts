@@ -12,7 +12,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { JsonlSessionRepo, TODO_CONTEXT } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
-import type { Models } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels, type Models } from "@earendil-works/pi-ai";
 import { ArtifactStore, type AuditReport, type TerminalRecord } from "../adapters/artifact-store.js";
 import {
 	FULL_GAME_ID,
@@ -23,7 +23,7 @@ import {
 } from "../adapters/game-resolver.js";
 import { canonicalJsonDigest } from "../adapters/sha256.js";
 import { SidecarClient, type SidecarProcessOptions } from "../adapters/sidecar-client.js";
-import { VisualPngPublisher } from "../adapters/visual-png.js";
+import { encodeVisualPng, VisualPngPublisher } from "../adapters/visual-png.js";
 import { buildInitialTaskPrompt } from "../application/model-prompts.js";
 import { ModelToolExecutor } from "../application/model-tools.js";
 import {
@@ -279,11 +279,14 @@ export function createHostWithPorts(models: Models, options: HostPorts = {}): Pi
 		} catch (error) {
 			return rejection(error instanceof Error && "code" in error ? String(error.code) : "game_unavailable");
 		}
+		if (request.signal?.aborted) return rejection("cancelled_before_start");
 		const model = await resolveRuntimeModel(models, request.provider, request.modelId);
+		if (request.signal?.aborted) return rejection("cancelled_before_start");
 		if (model === null) return rejection("model_unavailable");
-		if (request.thinkingLevel !== undefined && request.thinkingLevel !== "off" && !model.reasoning)
+		if (request.thinkingLevel !== undefined && !getSupportedThinkingLevels(model).includes(request.thinkingLevel))
 			return rejection("thinking_unsupported");
 		if (!(await emptyArtifactRoot(root))) return rejection("artifact_unavailable");
+		if (request.signal?.aborted) return rejection("cancelled_before_start");
 
 		const runId = newId();
 		const manifest = manifestFor(runId, game, request);
@@ -333,9 +336,13 @@ export function createHostWithPorts(models: Models, options: HostPorts = {}): Pi
 			visuals: new VisualPngPublisher(root),
 			now,
 			digest: canonicalJsonDigest,
+			actionBudget: request.actionBudget ?? 2000,
+			...(request.signal === undefined ? {} : { signal: request.signal }),
 		};
 		try {
+			if (request.signal?.aborted) return rejection("cancelled_before_start");
 			const session = await sessionRepo.create({ cwd: root, id: runId }, TODO_CONTEXT);
+			if (request.signal?.aborted) return rejection("cancelled_before_start");
 			active = await RunController.start({ manifest, sessionId: session.metadata.id, laneId: "arc" }, ports);
 			started = true;
 			await journal.append("run.started", { game: gameIdentity(manifest), artifactRoot: root }, "run.started");
@@ -357,6 +364,7 @@ export function createHostWithPorts(models: Models, options: HostPorts = {}): Pi
 				runtime = await PiArcRuntime.attach({
 					session,
 					models,
+					...(request.signal === undefined ? {} : { signal: request.signal }),
 					provider: request.provider,
 					modelId: request.modelId,
 					laneId: "arc",
@@ -387,6 +395,17 @@ export function createHostWithPorts(models: Models, options: HostPorts = {}): Pi
 						}),
 					buildRecoveryEnvelope: (authority) => bridge.recoveryEnvelope(authority),
 					pendingCheckpoint: () => bridge.pendingCheckpoint(),
+					requestCheckpoint: () => knowledge.requestCheckpoint(`capacity-${newId()}`, anchor()),
+					recoveryImages: async (authority) => {
+						const frame = await evidence.readFrame(authority.turn.turn, null);
+						return [
+							{
+								type: "image",
+								mimeType: "image/png",
+								data: Buffer.from(encodeVisualPng(frame.visual)).toString("base64"),
+							},
+						];
+					},
 					boundary: {
 						prepare: (authority) => bridge.prepareBoundary(authority),
 						acknowledge: (boundaryId) => bridge.acknowledgeBoundary(boundaryId),
@@ -423,7 +442,8 @@ export function createHostWithPorts(models: Models, options: HostPorts = {}): Pi
 		} catch {
 			if (active?.termination === null) {
 				try {
-					await active.finish("controller_failure" satisfies TerminationReason);
+					if (request.signal?.aborted) await active.cancel();
+					else await active.finish("controller_failure" satisfies TerminationReason);
 				} catch {
 					// 无法证明 terminal 时，不伪造成功结果。
 				}

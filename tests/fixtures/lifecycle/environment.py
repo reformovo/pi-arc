@@ -30,7 +30,8 @@ class LifecycleEnvironment:
             "state": self.state,
             "levelsCompleted": 1 if self.state == "WIN" else 0,
             "winLevels": 1,
-            "availableActions": ["RESET"] if self.state == "GAME_OVER" else ["ACTION1", "ACTION7"],
+            # Like the SDK, report simple actions unchanged even at GAME_OVER; no RESET.
+            "availableActions": ["ACTION1", "ACTION7"],
             "frames": [[[self.turn % 16, 1], [2, 3]]],
         }
 

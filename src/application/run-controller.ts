@@ -126,6 +126,9 @@ export interface ControllerPorts {
 	visuals: ControllerVisuals;
 	now(): string;
 	digest(value: JsonValue): string;
+	/** Run-scoped policy; applies equally to fresh and recovered controllers. */
+	actionBudget?: number;
+	signal?: AbortSignal;
 }
 
 export interface RunBinding {
@@ -434,6 +437,17 @@ export class RunController {
 	async play(request: PlayRequest): Promise<Turn> {
 		if (!this.gateOpen || this.terminal !== null || this.pending !== null)
 			throw new ActionRejectedError("Run does not admit another Action");
+		// This is the authoritative admission point, not the outer model loop.
+		// Once pending is set below, cancellation must classify that Action instead
+		// of interrupting its receipt/Turn publication.
+		if (this.ports.signal?.aborted) {
+			await this.cancel();
+			throw new ActionRejectedError("Run was cancelled");
+		}
+		if (this.current.turn >= (this.ports.actionBudget ?? Number.POSITIVE_INFINITY)) {
+			await this.finish("action_budget_exhausted");
+			throw new ActionRejectedError("Action budget is exhausted");
+		}
 		let checked: GameAction;
 		try {
 			checked = action(request.action);
@@ -442,9 +456,10 @@ export class RunController {
 				throw new ActionRejectedError("GAME_OVER requires RESET");
 			if (
 				this.current.observation.state === "WIN" ||
-				!this.current.observation.availableActions.includes(checked.name)
+				(checked.name !== "RESET" && !this.current.observation.availableActions.includes(checked.name))
 			)
 				throw new ActionRejectedError("Action is unavailable");
+			// RESET is a lifecycle Action, not part of the SDK's simple-action availability enum.
 			if (checked.name === "RESET" && this.current.observation.state !== "GAME_OVER")
 				throw new ActionRejectedError("RESET requires GAME_OVER");
 			if (checked.name === "RESET" && (!request.retryState || request.retryState.trim().length === 0))
@@ -570,7 +585,8 @@ export class RunController {
 				receipt.baseTurn === intent.baseTurn &&
 				receipt.baseObservationDigest === intent.baseObservationDigest &&
 				this.terminal === null &&
-				this.gateOpen
+				this.gateOpen &&
+				!this.ports.signal?.aborted
 			) {
 				return this.submit(intent, false);
 			}
@@ -708,6 +724,12 @@ export class RunController {
 		if (receipt.resultState === "WIN") {
 			this.gateOpen = false;
 			await this.finishLocked("WIN");
+		} else if (this.ports.signal?.aborted) {
+			this.gateOpen = false;
+			await this.finishLocked("cancelled");
+		} else if (this.current.turn >= (this.ports.actionBudget ?? Number.POSITIVE_INFINITY)) {
+			this.gateOpen = false;
+			await this.finishLocked("action_budget_exhausted");
 		}
 	}
 

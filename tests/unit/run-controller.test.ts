@@ -125,7 +125,7 @@ class FakeEnvironment implements ControllerEnvironment {
 			state: this.nextState,
 			levelsCompleted: this.advanceLevel ? 1 : 0,
 			winLevels: this.nextState === "WIN" ? 1 : 0,
-			availableActions: ["ACTION1", "ACTION7", "RESET"],
+			availableActions: ["ACTION1", "ACTION7"],
 		};
 		const complete = {
 			...base,
@@ -155,7 +155,7 @@ class FakeEnvironment implements ControllerEnvironment {
 	}
 }
 
-async function setup(): Promise<{
+async function setup(policy: Pick<ControllerPorts, "actionBudget" | "signal"> = {}): Promise<{
 	root: string;
 	store: ArtifactStore;
 	environment: FakeEnvironment;
@@ -174,6 +174,7 @@ async function setup(): Promise<{
 		},
 		now: () => at,
 		digest: canonicalJsonDigest,
+		...policy,
 	};
 	const controller = await RunController.start(
 		{ manifest: manifest(), sessionId: "session-1", laneId: "lane-1" },
@@ -187,6 +188,71 @@ function play(actionId = "action-1", value = action) {
 }
 
 describe("Run lifecycle and effect protocol", () => {
+	it("enforces per-Action budget including on a recovered authority", async () => {
+		const { controller, ports, environment, store } = await setup({ actionBudget: 1 });
+		await controller.play(play());
+		expect(controller.termination?.terminationReason).toBe("action_budget_exhausted");
+		await expect(controller.play(play("extra"))).rejects.toBeInstanceOf(ActionRejectedError);
+		const recovered = await RunController.recover(runId, ports);
+		await expect(recovered.play(play("recovered-extra"))).rejects.toBeInstanceOf(ActionRejectedError);
+		expect(environment.submitCount).toBe(1);
+		expect((await store.readDomain()).filter((r) => r.recordType === "action.intent")).toHaveLength(1);
+	});
+
+	it("checks the budget at admission even when recovery has already consumed it", async () => {
+		const { controller, ports, environment } = await setup();
+		await controller.play(play());
+		const recovered = await RunController.recover(runId, { ...ports, actionBudget: 1 });
+		await expect(recovered.play(play("extra"))).rejects.toBeInstanceOf(ActionRejectedError);
+		expect(recovered.termination?.terminationReason).toBe("action_budget_exhausted");
+		expect(environment.submitCount).toBe(1);
+	});
+
+	it("rejects cancellation before Action admission without an intent", async () => {
+		const abort = new AbortController();
+		const { controller, environment, store } = await setup({ signal: abort.signal });
+		abort.abort();
+		await expect(controller.play(play())).rejects.toBeInstanceOf(ActionRejectedError);
+		expect(controller.termination?.terminationReason).toBe("cancelled");
+		expect(environment.submitCount).toBe(0);
+		expect((await store.readDomain()).filter((r) => r.recordType === "action.intent")).toHaveLength(0);
+	});
+
+	it.each(["NOT_FINISHED", "WIN"] as const)(
+		"cancellation after admission preserves complete %s receipt and Turn",
+		async (nextState) => {
+			const abort = new AbortController();
+			const { controller, environment } = await setup({ signal: abort.signal, actionBudget: 1 });
+			environment.mode = "deferred";
+			environment.nextState = nextState;
+			const pending = controller.play(play());
+			await vi.waitFor(() => expect(environment.releaseReply).not.toBeNull());
+			abort.abort();
+			environment.releaseReply?.();
+			await pending;
+			expect(controller.turn.turn).toBe(1);
+			expect(controller.termination?.terminationReason).toBe(nextState === "WIN" ? "WIN" : "cancelled");
+			expect(environment.submitCount).toBe(1);
+		},
+	);
+
+	it("cancelled admitted Action cannot resubmit after a negative acknowledgement", async () => {
+		const abort = new AbortController();
+		const { controller, environment } = await setup({ signal: abort.signal });
+		const original = environment.request.bind(environment);
+		environment.request = async (type, payload) => {
+			if (type === "submit_action") {
+				abort.abort();
+				throw new Error("no receipt");
+			}
+			return await original(type, payload);
+		};
+		await expect(controller.play(play())).rejects.toBeInstanceOf(UnknownActionOutcomeError);
+		expect(controller.termination?.terminationReason).toBe("unknown_action_outcome");
+		expect(controller.turn.turn).toBe(0);
+		expect(environment.lookupCount).toBe(1);
+	});
+
 	it("T-RUN-001: persists initial Turn 0 with all Frames and binding before admitting Action", async () => {
 		const { controller, store, root } = await setup();
 		expect(controller.turn).toMatchObject({ turn: 0, level: 1, attempt: 1, actionId: null });
@@ -278,6 +344,7 @@ describe("Run lifecycle and effect protocol", () => {
 		environment.nextState = "GAME_OVER";
 		const failed = await controller.play(play());
 		expect(failed).toMatchObject({ turn: 1, level: 1, attempt: 1, attemptStatus: "ended" });
+		expect(failed.observation.availableActions).not.toContain("RESET");
 		await expect(controller.play(play("bad-after-game-over"))).rejects.toBeInstanceOf(ActionRejectedError);
 		environment.nextState = "NOT_FINISHED";
 		const reset = await controller.play({
@@ -285,6 +352,72 @@ describe("Run lifecycle and effect protocol", () => {
 			retryState: "下次先试右边",
 		});
 		expect(reset).toMatchObject({ turn: 2, level: 1, attempt: 2, attemptStatus: "active" });
+		await expect(
+			controller.play({ ...play("reset", { name: "RESET", data: {} }), retryState: "下次先试右边" }),
+		).rejects.toBeInstanceOf(ActionRejectedError);
+		environment.nextState = "WIN";
+		const win = await controller.play(play("win-after-reset", { name: "ACTION7", data: {} }));
+		expect(win).toMatchObject({ turn: 3, attempt: 2, observation: { state: "WIN" } });
+		expect(environment.submitCount).toBe(3);
+		expect(controller.termination?.terminationReason).toBe("WIN");
+	});
+
+	it("RESET shares one-pending admission and preserves its committed receipt on cancellation", async () => {
+		const abort = new AbortController();
+		const { controller, environment, store } = await setup({ signal: abort.signal });
+		environment.nextState = "GAME_OVER";
+		await controller.play(play("fail"));
+		environment.nextState = "NOT_FINISHED";
+		environment.mode = "deferred";
+		const resetRequest = { ...play("reset", { name: "RESET", data: {} }), retryState: "保留推理" };
+		const pending = controller.play(resetRequest);
+		await vi.waitFor(() => expect(environment.releaseReply).not.toBeNull());
+		await expect(controller.play({ ...resetRequest, actionId: "concurrent-reset" })).rejects.toBeInstanceOf(
+			ActionRejectedError,
+		);
+		abort.abort();
+		environment.releaseReply?.();
+		await pending;
+		expect(controller.turn).toMatchObject({ turn: 2, attempt: 2 });
+		expect(controller.termination?.terminationReason).toBe("cancelled");
+		expect(environment.submitCount).toBe(2);
+		expect((await store.readDomain()).filter((r) => r.recordType === "action.intent")).toHaveLength(2);
+	});
+
+	it("RESET cannot bypass an exhausted action budget or pre-admission cancellation", async () => {
+		const budget = await setup({ actionBudget: 1 });
+		budget.environment.nextState = "GAME_OVER";
+		await budget.controller.play(play("fail"));
+		await expect(
+			budget.controller.play({ ...play("reset", { name: "RESET", data: {} }), retryState: "retained" }),
+		).rejects.toBeInstanceOf(ActionRejectedError);
+		expect(budget.controller.termination?.terminationReason).toBe("action_budget_exhausted");
+		expect(budget.environment.submitCount).toBe(1);
+
+		const abort = new AbortController();
+		const cancelled = await setup({ signal: abort.signal });
+		cancelled.environment.nextState = "GAME_OVER";
+		await cancelled.controller.play(play("fail"));
+		abort.abort();
+		await expect(
+			cancelled.controller.play({ ...play("reset", { name: "RESET", data: {} }), retryState: "retained" }),
+		).rejects.toBeInstanceOf(ActionRejectedError);
+		expect(cancelled.controller.termination?.terminationReason).toBe("cancelled");
+		expect(cancelled.environment.submitCount).toBe(1);
+	});
+
+	it("RESET with an unknown outcome stays fail-closed and is never resubmitted", async () => {
+		const { controller, environment, ports } = await setup();
+		environment.nextState = "GAME_OVER";
+		await controller.play(play("fail"));
+		environment.mode = "pending";
+		const reset = { ...play("reset", { name: "RESET", data: {} }), retryState: "retained" };
+		await expect(controller.play(reset)).rejects.toBeInstanceOf(UnknownActionOutcomeError);
+		await expect(controller.play(reset)).rejects.toBeInstanceOf(ActionRejectedError);
+		const recovered = await RunController.recover(runId, ports);
+		expect(recovered.termination?.terminationReason).toBe("unknown_action_outcome");
+		expect(environment.submitCount).toBe(2);
+		expect(controller.turn).toMatchObject({ turn: 1, attempt: 1 });
 	});
 
 	it("T-LIFECYCLE-002: Level progress stays in Run; WIN writes one terminal", async () => {
@@ -350,13 +483,16 @@ describe("Run lifecycle and effect protocol", () => {
 		await expect(controller.play({ ...play("bad-retry"), retryState: "not a reset" })).rejects.toBeInstanceOf(
 			ActionRejectedError,
 		);
+		await expect(controller.play(play("unavailable", { name: "ACTION2", data: {} }))).rejects.toThrow(
+			"Action is unavailable",
+		);
 		await expect(controller.play(play("bad-six", { name: "ACTION6", data: { x: 1 } }))).rejects.toBeInstanceOf(
 			ActionRejectedError,
 		);
 		await controller.play(play("once"));
 		await expect(controller.play(play("once"))).rejects.toBeInstanceOf(ActionRejectedError);
 		expect(environment.submitCount).toBe(1);
-		expect((await store.readDomain()).filter((entry) => entry.recordType === "tool.rejection")).toHaveLength(4);
+		expect((await store.readDomain()).filter((entry) => entry.recordType === "tool.rejection")).toHaveLength(5);
 	});
 
 	it("RESET keeps retry_state and boundary flag in the same committed Turn", async () => {

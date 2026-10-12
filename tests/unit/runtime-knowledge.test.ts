@@ -30,12 +30,12 @@ function turn(number: number): Turn {
 function committed(number: number): DomainRecord {
 	return {
 		schema: "pi-arc.domain-record.v1",
-		sequence: number + 1,
+		sequence: number === 0 ? 1 : 4,
 		recordedAt: "2026-09-24T00:00:00Z",
 		recordType: "turn.commit",
 		previousDigest: "0".repeat(64),
 		digest: "1".repeat(64),
-		payload: { ...turn(number) },
+		payload: { ...turn(number), receiptDigest: number === 0 ? null : "receipt-1" },
 	};
 }
 
@@ -58,7 +58,39 @@ function bridgeFixture() {
 	} | null = null;
 	const acknowledgements: string[] = [];
 	const artifacts = {
-		readDomain: () => Promise.resolve([committed(0), committed(1)]),
+		readDomain: () =>
+			Promise.resolve([
+				committed(0),
+				{
+					...committed(1),
+					sequence: 2,
+					recordType: "action.intent",
+					payload: {
+						actionId: "action-1",
+						action: { name: "ACTION1", data: {} },
+						environmentInstanceId: "env-1",
+						baseTurn: 0,
+						baseObservationDigest: "digest-0",
+					},
+				},
+				{
+					...committed(1),
+					sequence: 3,
+					recordType: "environment.receipt",
+					payload: {
+						status: "complete",
+						actionId: "action-1",
+						action: { name: "ACTION1", data: {} },
+						environmentInstanceId: "env-1",
+						baseTurn: 0,
+						baseObservationDigest: "digest-0",
+						turn: 1,
+						observation,
+						receiptDigest: "receipt-1",
+					},
+				},
+				committed(1),
+			]),
 	} as unknown as ArtifactStore;
 	const knowledge = {
 		read: (kind: "guide" | "working") =>

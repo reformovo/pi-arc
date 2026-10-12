@@ -8,7 +8,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readdir, readFile, rename, stat } from "node:fs/promises";
 import path from "node:path";
 import { type NormalizedRawFrame, normalizeRawFrame, RawFrameValidationError } from "../domain/game-visual.js";
 import { canonicalJson, type JsonValue } from "../protocol/canonical-json.js";
@@ -130,7 +130,8 @@ export interface ArtifactDirEntry {
 
 /**
  * 狭窄的 filesystem port，用于在测试中注入 crash 和 partial write 行为。
- * 实现必须保留基于 rename 的发布语义。
+ * 实现必须保留基于 rename 的发布语义；生产实现的 writeFile 在返回前
+ * flush 文件，rename 在发布后 sync 父目录。注入实现仍自行定义故障模型。
  */
 export interface ArtifactIo {
 	mkdir(directory: string): Promise<void>;
@@ -148,9 +149,25 @@ const nodeArtifactIo: ArtifactIo = {
 	},
 	readFile: (file) => readFile(file, "utf8"),
 	writeFile: async (file, content) => {
-		await writeFile(file, content, "utf8");
+		const handle = await open(file, "w");
+		try {
+			await handle.writeFile(content, "utf8");
+			await handle.sync();
+		} finally {
+			await handle.close();
+		}
 	},
-	rename,
+	rename: async (from, to) => {
+		await rename(from, to);
+		// rename 只保证原子可见性；父目录 sync 才请求持久化新的目录项。
+		// 不支持目录 sync 的平台/文件系统必须报错，不能静默降级成功。
+		const directory = await open(path.dirname(to), "r");
+		try {
+			await directory.sync();
+		} finally {
+			await directory.close();
+		}
+	},
 	stat,
 	readdir: async (directory) =>
 		(await readdir(directory, { withFileTypes: true })).map((entry) => ({
@@ -510,7 +527,9 @@ export class ArtifactStore {
 		const target = path.join(this.root, relativePath);
 		await this.io.mkdir(path.dirname(target));
 		// 可见 target 只在 rename 时发生变化。rename 前 crash 会留下可审计的
-		// .partial marker，而不是发布截断的规范化字节。
+		// .partial marker，而不是发布截断的规范化字节。生产 I/O 先 sync 临时
+		// 文件再 rename、sync 父目录；后者失败时 target 可能已可见，报错不
+		// 代表未发布。这不承诺新建祖先目录或底层硬件的掉电持久性。
 		const temporary = `${target}.partial`;
 		await this.io.writeFile(temporary, content);
 		await this.io.rename(temporary, target);

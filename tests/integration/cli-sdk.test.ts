@@ -21,7 +21,12 @@ const source = fileURLToPath(new URL("../fixtures/sidecar", import.meta.url));
 const lifecycleSource = fileURLToPath(new URL("../fixtures/lifecycle", import.meta.url));
 const now = () => "2026-09-24T00:00:00Z";
 
-async function fixture(environmentSource = source, crashAfterAccept = false) {
+async function fixture(
+	environmentSource = source,
+	crashAfterAccept = false,
+	onFetch = () => {},
+	onActionResult?: () => void,
+) {
 	const root = await mkdtemp(path.join(os.tmpdir(), "pi-arc-wp09-"));
 	const faux = fauxProvider();
 	const models = createModels();
@@ -31,15 +36,27 @@ async function fixture(environmentSource = source, crashAfterAccept = false) {
 	const host = createHostWithPorts(models, {
 		now,
 		newId: () => `run-${++nextId}`,
-		...(crashAfterAccept
-			? {
-					sidecar: (options: ConstructorParameters<typeof SidecarClient>[0]) =>
-						new SidecarClient({ ...options, spawnEnv: { PI_ARC_SIDECAR_CRASH_AFTER_ACCEPT: "1" } }),
-				}
-			: {}),
+		sidecar: (options) => {
+			const sidecar = new SidecarClient({
+				...options,
+				...(crashAfterAccept ? { spawnEnv: { PI_ARC_SIDECAR_CRASH_AFTER_ACCEPT: "1" } } : {}),
+			});
+			if (onActionResult !== undefined) {
+				const original = sidecar.request.bind(sidecar);
+				vi.spyOn(sidecar, "request").mockImplementation(async (type, payload) => {
+					try {
+						return await original(type, payload);
+					} finally {
+						if (type === "submit_action") onActionResult();
+					}
+				});
+			}
+			return sidecar;
+		},
 		catalog: {
 			fetch: async (gameId, sourceLocator, destination) => {
 				fetches += 1;
+				onFetch();
 				await cp(environmentSource, destination, { recursive: true });
 				return { gameId, sourceLocator };
 			},
@@ -48,6 +65,7 @@ async function fixture(environmentSource = source, crashAfterAccept = false) {
 	return {
 		root,
 		faux,
+		models,
 		host,
 		get fetches() {
 			return fetches;
@@ -71,6 +89,32 @@ function winResponses(faux: Awaited<ReturnType<typeof fixture>>["faux"]): void {
 }
 
 describe("WP-09 offline host", () => {
+	it("returns unavailable Action as invalid_request and lets the model correct it", async () => {
+		const f = await fixture();
+		f.faux.setResponses([
+			fauxAssistantMessage([fauxToolCall("play", { action: "ACTION2" })], { stopReason: "toolUse" }),
+			fauxAssistantMessage([fauxToolCall("play", { action: "ACTION7" })], { stopReason: "toolUse" }),
+			fauxAssistantMessage("done"),
+		]);
+		try {
+			const request = f.request();
+			const result = await f.host.run(request);
+			expect(result).toMatchObject({
+				status: "terminated",
+				result: { outcomeClass: "win", lastCommittedTurn: 1, audit: { ok: true } },
+			});
+			const records = await new ArtifactStore(request.artifactRoot).readDomain();
+			expect(records.filter((record) => record.recordType === "action.intent")).toHaveLength(1);
+			expect(records.find((record) => record.recordType === "tool.rejection")?.payload.reason).toBe(
+				"Action is unavailable",
+			);
+			const runtime = await readFile(path.join(request.artifactRoot, "runtime.jsonl"), "utf8");
+			expect(runtime).toContain('"code":"invalid_request"');
+			expect(runtime).not.toContain('"code":"storage_failure"');
+		} finally {
+			await rm(f.root, { recursive: true, force: true });
+		}
+	});
 	it("discards SDK fetching observations and starts a separate credential-free Run", async () => {
 		const root = await mkdtemp(path.join(os.tmpdir(), "pi-arc-sdk-fetch-"));
 		const sdkRoot = path.join(root, "sdk");
@@ -227,6 +271,138 @@ describe("WP-09 offline host", () => {
 		expect(events.map((event) => event.type)).toContain("run.resumed");
 	});
 
+	it("enforces budget inside one model/tool loop, with WIN priority on the last admitted Action", async () => {
+		const setup = await fixture();
+		setup.faux.setResponses([
+			fauxAssistantMessage([fauxToolCall("play", { action: "ACTION1" })], { stopReason: "toolUse" }),
+			fauxAssistantMessage([fauxToolCall("play", { action: "ACTION7" })], { stopReason: "toolUse" }),
+			fauxAssistantMessage("done"),
+		]);
+		const request = setup.request();
+		expect(await setup.host.run({ ...request, actionBudget: 1 })).toMatchObject({
+			status: "terminated",
+			result: { terminationReason: "action_budget_exhausted", lastCommittedTurn: 1, audit: { ok: true } },
+		});
+		const records = await new ArtifactStore(request.artifactRoot).readDomain();
+		expect(records.filter((record) => record.recordType === "action.intent")).toHaveLength(1);
+		const winning = await fixture();
+		winResponses(winning.faux);
+		expect(await winning.host.run({ ...winning.request(), actionBudget: 1 })).toMatchObject({
+			status: "terminated",
+			result: { terminationReason: "WIN", lastCommittedTurn: 1 },
+		});
+	});
+
+	it("cancels a model response before its new Action can be admitted", async () => {
+		const setup = await fixture();
+		const abort = new AbortController();
+		let sawModelSignal = false;
+		setup.faux.setResponses([
+			(_context, options) => {
+				sawModelSignal = options?.signal !== undefined;
+				abort.abort();
+				return fauxAssistantMessage([fauxToolCall("play", { action: "ACTION7" })], { stopReason: "toolUse" });
+			},
+		]);
+		const request = setup.request();
+		expect(await setup.host.run({ ...request, signal: abort.signal })).toMatchObject({
+			status: "terminated",
+			result: { terminationReason: "cancelled", lastCommittedTurn: 0 },
+		});
+		expect(sawModelSignal).toBe(true);
+		expect(
+			(await new ArtifactStore(request.artifactRoot).readDomain()).filter((r) => r.recordType === "action.intent"),
+		).toHaveLength(0);
+		expect(setup.faux.state.callCount).toBe(1);
+	});
+
+	it.each([
+		{ action: "ACTION1", crash: false, reason: "cancelled", turn: 1 },
+		{ action: "ACTION7", crash: false, reason: "WIN", turn: 1 },
+		{ action: "ACTION1", crash: true, reason: "unknown_action_outcome", turn: 0 },
+	])("preserves admitted Action classification on cancellation: $reason", async ({ action, crash, reason, turn }) => {
+		const abort = new AbortController();
+		const setup = await fixture(
+			source,
+			crash,
+			() => {},
+			() => abort.abort(),
+		);
+		setup.faux.setResponses([
+			fauxAssistantMessage([fauxToolCall("play", { action })], { stopReason: "toolUse" }),
+			fauxAssistantMessage([fauxToolCall("play", { action: "ACTION7" })], { stopReason: "toolUse" }),
+		]);
+		const request = setup.request();
+		expect(await setup.host.run({ ...request, signal: abort.signal })).toMatchObject({
+			status: "terminated",
+			result: { terminationReason: reason, lastCommittedTurn: turn, audit: { ok: true } },
+		});
+		expect(
+			(await new ArtifactStore(request.artifactRoot).readDomain()).filter((r) => r.recordType === "action.intent"),
+		).toHaveLength(1);
+		expect(setup.faux.state.callCount).toBe(1);
+	});
+
+	it.each(["catalog", "auth"])("rejects startup cancellation after %s before creating a Run", async (stage) => {
+		const abort = new AbortController();
+		const setup = await fixture(source, false, () => {
+			if (stage === "catalog") abort.abort();
+		});
+		if (stage === "auth")
+			vi.spyOn(setup.models, "getAuth").mockImplementation(() => {
+				abort.abort();
+				return Promise.resolve({ auth: { apiKey: "faux" } });
+			});
+		const request = setup.request();
+		expect(await setup.host.run({ ...request, signal: abort.signal })).toEqual({
+			status: "rejected",
+			reason: "cancelled_before_start",
+		});
+		await expect(stat(path.join(request.artifactRoot, "manifest.json"))).rejects.toMatchObject({ code: "ENOENT" });
+		expect(setup.faux.state.callCount).toBe(0);
+	});
+
+	it.each(["medium", "off"] as const)("rejects an explicitly unsupported thinking level %s", async (thinkingLevel) => {
+		const setup = await fixture();
+		const model = {
+			...setup.faux.getModel(),
+			reasoning: true,
+			thinkingLevelMap: {
+				off: null,
+				minimal: null,
+				low: "low",
+				medium: null,
+				high: "high",
+				xhigh: null,
+				max: "max",
+			},
+		};
+		vi.spyOn(setup.models, "getModel").mockReturnValue(model);
+		expect(await setup.host.run({ ...setup.request(), thinkingLevel })).toEqual({
+			status: "rejected",
+			reason: "thinking_unsupported",
+		});
+		expect(setup.faux.state.callCount).toBe(0);
+	});
+
+	it("preserves a supported requested thinking level in the manifest", async () => {
+		const setup = await fixture();
+		vi.spyOn(setup.models, "getModel").mockReturnValue({
+			...setup.faux.getModel(),
+			reasoning: true,
+			thinkingLevelMap: { medium: null, high: "high", max: "max" },
+		});
+		winResponses(setup.faux);
+		const request = setup.request();
+		expect(await setup.host.run({ ...request, thinkingLevel: "high" })).toMatchObject({
+			status: "terminated",
+			result: { terminationReason: "WIN", audit: { ok: true } },
+		});
+		expect(JSON.parse(await readFile(path.join(request.artifactRoot, "manifest.json"), "utf8"))).toMatchObject({
+			model: { thinkingLevel: "high" },
+		});
+	});
+
 	it("stops at the configured Action budget without inventing WIN", async () => {
 		const setup = await fixture();
 		setup.faux.setResponses([
@@ -320,6 +496,17 @@ describe("WP-09 offline host", () => {
 			result: { outcomeClass: "win", terminationReason: "WIN", lastCommittedTurn: 3 },
 		});
 		const domain = await readFile(path.join(setup.root, "artifacts", "domain.jsonl"), "utf8");
+		const commits = domain
+			.trim()
+			.split("\n")
+			.map((line) => JSON.parse(line) as { recordType: string; payload: Record<string, unknown> })
+			.filter((entry) => entry.recordType === "turn.commit");
+		expect(commits[1]?.payload).toMatchObject({
+			attempt: 1,
+			observation: { state: "GAME_OVER", availableActions: ["ACTION1", "ACTION7"] },
+		});
+		expect(commits[2]?.payload).toMatchObject({ attempt: 2, retryState: "try the other action" });
+		expect(commits[3]?.payload).toMatchObject({ observation: { state: "WIN" } });
 		expect(domain).toContain('"boundaryPending":true');
 		expect(domain).toContain('"recordType":"context.boundary"');
 	});

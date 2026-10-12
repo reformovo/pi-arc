@@ -1,7 +1,7 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, open, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	ArtifactConflictError,
 	type ArtifactIo,
@@ -12,7 +12,65 @@ import {
 } from "../../src/adapters/artifact-store.js";
 import { canonicalJsonDigest } from "../../src/adapters/sha256.js";
 
+// 默认委托真实 Node I/O，只在 durability 测试中记录/注入 syscall 边界。
+vi.mock("node:fs/promises", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("node:fs/promises")>();
+	return { ...actual, open: vi.fn(actual.open), rename: vi.fn(actual.rename) };
+});
+
+afterEach(() => {
+	vi.mocked(open).mockReset();
+	vi.mocked(rename).mockReset();
+});
+
 const timestamp = "2026-09-23T00:00:00Z";
+
+type PublishStep =
+	| "file.open"
+	| "file.write"
+	| "file.sync"
+	| "file.close"
+	| "rename"
+	| "directory.open"
+	| "directory.sync"
+	| "directory.close";
+
+async function tracePublish(failure?: PublishStep): Promise<{ steps: PublishStep[]; error: Error }> {
+	const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+	const steps: PublishStep[] = [];
+	const error = new Error(`injected ${failure} failure`);
+	const step = (name: PublishStep) => {
+		steps.push(name);
+		if (name === failure) throw error;
+	};
+	vi.mocked(open).mockImplementation(async (file, flags, mode) => {
+		const kind = flags === "w" ? "file" : "directory";
+		step(`${kind}.open`);
+		const handle = await actual.open(file, flags, mode);
+		const write = handle.writeFile.bind(handle);
+		const sync = handle.sync.bind(handle);
+		const close = handle.close.bind(handle);
+		vi.spyOn(handle, "writeFile").mockImplementation(async (...args) => {
+			step("file.write");
+			await write(...args);
+		});
+		vi.spyOn(handle, "sync").mockImplementation(async () => {
+			step(`${kind}.sync`);
+			await sync();
+		});
+		vi.spyOn(handle, "close").mockImplementation(async () => {
+			// 即使注入 close 报错也释放真实测试 descriptor。
+			await close();
+			step(`${kind}.close`);
+		});
+		return handle;
+	});
+	vi.mocked(rename).mockImplementation(async (from, to) => {
+		step("rename");
+		await actual.rename(from, to);
+	});
+	return { steps, error };
+}
 
 async function makeStore(): Promise<{ root: string; store: ArtifactStore }> {
 	const root = await mkdtemp(path.join(tmpdir(), "pi-arc-artifact-"));
@@ -87,6 +145,81 @@ async function completeArchive(store: ArtifactStore): Promise<{ ledgerHead: stri
 }
 
 describe("artifact store", () => {
+	it("flushes and closes the temporary file before rename, then syncs and closes its parent", async () => {
+		const { root, store } = await makeStore();
+		const { steps } = await tracePublish();
+		await store.writeRawFrame(frame());
+		const target = path.join(root, "frames", "t000000", "f000000.json");
+		expect(steps).toEqual([
+			"file.open",
+			"file.write",
+			"file.sync",
+			"file.close",
+			"rename",
+			"directory.open",
+			"directory.sync",
+			"directory.close",
+		]);
+		expect(open).toHaveBeenNthCalledWith(1, `${target}.partial`, "w");
+		expect(rename).toHaveBeenCalledWith(`${target}.partial`, target);
+		expect(open).toHaveBeenNthCalledWith(2, path.dirname(target), "r");
+		expect(JSON.parse(await readFile(target, "utf8"))).toEqual(frame());
+		await expect(stat(`${target}.partial`)).rejects.toMatchObject({ code: "ENOENT" });
+	});
+
+	it.each([
+		["file.open", ["file.open"]],
+		["file.write", ["file.open", "file.write", "file.close"]],
+		["file.sync", ["file.open", "file.write", "file.sync", "file.close"]],
+		["file.close", ["file.open", "file.write", "file.sync", "file.close"]],
+		["rename", ["file.open", "file.write", "file.sync", "file.close", "rename"]],
+	] satisfies [PublishStep, PublishStep[]][])(
+		"rejects %s failure without publishing a target",
+		async (failure, expected) => {
+			const { root, store } = await makeStore();
+			const { steps, error } = await tracePublish(failure);
+			await expect(store.writeManifest(manifest())).rejects.toBe(error);
+			expect(steps).toEqual(expected);
+			await expect(stat(path.join(root, "manifest.json"))).rejects.toMatchObject({ code: "ENOENT" });
+			if (failure !== "file.open") {
+				expect((await store.audit()).findings.map((finding) => finding.code)).toContain("partial_write");
+			}
+		},
+	);
+
+	it("preserves the previous ledger when the replacement file cannot be synced", async () => {
+		const { root, store } = await makeStore();
+		await store.appendDomain("run.binding", timestamp, { runId: "run-artifact-test" });
+		const target = path.join(root, "domain.jsonl");
+		const previous = await readFile(target, "utf8");
+		const { steps, error } = await tracePublish("file.sync");
+		await expect(store.appendDomain("turn.commit", timestamp, { turn: 0 })).rejects.toBe(error);
+		expect(steps).toEqual(["file.open", "file.write", "file.sync", "file.close"]);
+		expect(await readFile(target, "utf8")).toBe(previous);
+		expect(await readFile(`${target}.partial`, "utf8")).toContain("turn.commit");
+		expect(await store.readDomain()).toHaveLength(1);
+	});
+
+	it.each(["directory.open", "directory.sync", "directory.close"] as const)(
+		"rejects %s failure even though rename has already published the target",
+		async (failure) => {
+			const { root, store } = await makeStore();
+			const { steps, error } = await tracePublish(failure);
+			await expect(store.writeManifest(manifest())).rejects.toBe(error);
+			expect(steps).toEqual([
+				"file.open",
+				"file.write",
+				"file.sync",
+				"file.close",
+				"rename",
+				"directory.open",
+				...(failure === "directory.open" ? [] : ["directory.sync", "directory.close"]),
+			]);
+			expect(JSON.parse(await readFile(path.join(root, "manifest.json"), "utf8"))).toEqual(manifest());
+			await expect(stat(path.join(root, "manifest.json.partial"))).rejects.toMatchObject({ code: "ENOENT" });
+		},
+	);
+
 	it("publishes stable entries and rebuilds deterministic audit", async () => {
 		const { root, store } = await makeStore();
 		const { ledgerHead } = await completeArchive(store);

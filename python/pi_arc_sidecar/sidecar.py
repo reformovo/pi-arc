@@ -18,10 +18,11 @@ import secrets
 import socket
 import sys
 import tempfile
+from contextlib import redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, cast
+from typing import Any, TextIO, cast
 
 from .canonical_json import canonical_json, canonical_json_digest
 
@@ -458,7 +459,16 @@ class Sidecar:
                 )
             return existing
         self._check_anchor(payload)
-        if name not in self.observation.get("availableActions", []):
+        if self.terminal_state == "GAME_OVER" and name != "RESET":
+            raise SidecarFault("invalid_request", "GAME_OVER requires RESET")
+        if name == "RESET":
+            # RESET is a lifecycle Action; SDK simple-action availability need not list it.
+            # retry_state belongs to the controller's knowledge commit, not this wire Action.
+            if self.terminal_state != "GAME_OVER":
+                raise SidecarFault("invalid_request", "RESET requires GAME_OVER")
+        elif self.terminal_state == "WIN" or name not in self.observation.get(
+            "availableActions", []
+        ):
             raise SidecarFault("invalid_request", "Action is not available at this Observation")
         base_turn = self.turn
         base_digest = self.observation_digest
@@ -560,7 +570,15 @@ def _response(
     return result
 
 
-def main() -> int:
+def main(wire: TextIO | None = None) -> int:
+    """协议使用独立输出句柄；SDK/Game 的 print 和日志只进入诊断通道。"""
+
+    protocol = sys.stdout if wire is None else wire
+    with redirect_stdout(sys.stderr):
+        return _serve(protocol)
+
+
+def _serve(wire: TextIO) -> int:
     parser = argparse.ArgumentParser(description="pi-arc Python Environment sidecar")
     parser.add_argument("--environment-root", required=True)
     parser.add_argument("--cache-root", required=True)
@@ -585,6 +603,7 @@ def main() -> int:
                 _response({"requestId": "startup", "type": "open"}, error=error), ensure_ascii=False
             ),
             flush=True,
+            file=wire,
         )
         return 1
     for line in sys.stdin:
@@ -612,6 +631,7 @@ def main() -> int:
                     _response(request, payload=output), ensure_ascii=False, separators=(",", ":")
                 ),
                 flush=True,
+                file=wire,
             )
         except (SidecarFault, json.JSONDecodeError, TypeError, ValueError) as error:
             fault = (
@@ -626,6 +646,7 @@ def main() -> int:
                     separators=(",", ":"),
                 ),
                 flush=True,
+                file=wire,
             )
         except Exception as error:  # pragma: no cover - last-resort process boundary
             print(
@@ -637,9 +658,15 @@ def main() -> int:
                     separators=(",", ":"),
                 ),
                 flush=True,
+                file=wire,
             )
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # 在导入 SDK/Game 前隔离 fd 1，涵盖 native/os.write 及缓存 stdout 的 logger。
+    # 仅保留的副本可写协议，不能靠 TypeScript 忽略非 JSON 行掩盖协议损坏。
+    sys.stdout.flush()
+    with os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8") as protocol:
+        os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
+        raise SystemExit(main(protocol))

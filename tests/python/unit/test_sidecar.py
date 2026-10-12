@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -96,6 +98,75 @@ def test_receipt_dedupe_and_conflict(tmp_path: Path) -> None:
     assert sidecar.dispatch("submit_action", request)["receipt"] == first
     with pytest.raises(sidecar_module.SidecarFault, match="other parameters"):
         sidecar.dispatch("submit_action", {**request, "action": {"name": "ACTION7", "data": {}}})
+
+
+def test_lifecycle_reset_is_independent_of_simple_action_availability(tmp_path: Path) -> None:
+    sidecar = sidecar_module.Sidecar(
+        Path("tests/fixtures/lifecycle"),
+        tmp_path / "cache",
+        "ls20-9607627b",
+        42,
+        OPEN_PAYLOAD["sourceLocator"],
+        OPEN_PAYLOAD["treeDigest"],
+    )
+
+    def request(action_id: str, name: str) -> dict[str, Any]:
+        anchor = sidecar.dispatch("get_anchor", {"environmentInstanceId": sidecar.instance_id})[
+            "anchor"
+        ]
+        return {
+            "environmentInstanceId": sidecar.instance_id,
+            "baseTurn": anchor["turn"],
+            "baseObservationDigest": anchor["observationDigest"],
+            "actionId": action_id,
+            "action": {"name": name, "data": {}},
+        }
+
+    with pytest.raises(sidecar_module.SidecarFault, match="RESET requires GAME_OVER"):
+        sidecar.dispatch("submit_action", request("early-reset", "RESET"))
+    with pytest.raises(sidecar_module.SidecarFault, match="not available"):
+        sidecar.dispatch("submit_action", request("unavailable", "ACTION2"))
+    failed = sidecar.dispatch("submit_action", request("fail", "ACTION1"))["receipt"]
+    assert failed["resultState"] == "GAME_OVER"
+    assert failed["observation"]["availableActions"] == ["ACTION1", "ACTION7"]
+    with pytest.raises(sidecar_module.SidecarFault, match="GAME_OVER requires RESET"):
+        sidecar.dispatch("submit_action", request("ordinary-after-game-over", "ACTION7"))
+    reset_request = request("reset", "RESET")
+    reset = sidecar.dispatch("submit_action", reset_request)["receipt"]
+    assert reset["resultState"] == "NOT_FINISHED"
+    assert reset["turn"] == 2
+    assert sidecar.dispatch("submit_action", reset_request)["receipt"] == reset
+    assert sidecar.turn == 2
+    assert sidecar.dispatch("lookup_action", reset_request)["receipt"] == reset
+    with pytest.raises(sidecar_module.SidecarFault, match="RESET requires GAME_OVER"):
+        sidecar.dispatch("submit_action", request("second-reset", "RESET"))
+    win = sidecar.dispatch("submit_action", request("win", "ACTION7"))["receipt"]
+    assert win["resultState"] == "WIN"
+    assert win["turn"] == 3
+    with pytest.raises(sidecar_module.SidecarFault, match="RESET requires GAME_OVER"):
+        sidecar.dispatch("submit_action", request("reset-after-win", "RESET"))
+    with pytest.raises(sidecar_module.SidecarFault, match="not available"):
+        sidecar.dispatch("submit_action", request("action-after-win", "ACTION7"))
+
+
+@pytest.mark.parametrize("state", ["NOT_PLAYED", "NOT_FINISHED", "WIN"])
+def test_reset_outside_game_over_rejected_even_when_listed(tmp_path: Path, state: str) -> None:
+    sidecar = make_sidecar(tmp_path)
+    sidecar.terminal_state = state
+    sidecar.observation["availableActions"] = ["RESET"]
+    with pytest.raises(sidecar_module.SidecarFault, match="RESET requires GAME_OVER"):
+        sidecar.dispatch(
+            "submit_action",
+            {
+                "environmentInstanceId": sidecar.instance_id,
+                "baseTurn": sidecar.turn,
+                "baseObservationDigest": sidecar.observation_digest,
+                "actionId": "reset",
+                "action": {"name": "RESET", "data": {}},
+            },
+        )
+    assert sidecar.turn == 0
+    assert not sidecar.receipts
 
 
 def test_instance_mismatch_is_rejected(tmp_path: Path) -> None:
@@ -320,6 +391,16 @@ def test_environment_projection_and_sdk_failure_paths(
         available_actions=[1, 99],
     )
     assert private("_arcade_result")(observation)["state"] == "WIN"
+    observation.state = SimpleNamespace(value="GAME_OVER")
+    observation.available_actions = [1, 2, 3, 4, 5, 6]
+    assert private("_arcade_result")(observation)["availableActions"] == [
+        "ACTION1",
+        "ACTION2",
+        "ACTION3",
+        "ACTION4",
+        "ACTION5",
+        "ACTION6",
+    ]
     with pytest.raises(sidecar_module.SidecarFault):
         private("_arcade_result")(None)
 
@@ -418,3 +499,107 @@ def test_main_process_boundary_and_wire_rejection(
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(request) + "\n"))
     assert sidecar_module.main() == 0
     assert json.loads(capsys.readouterr().out)["ok"] is True
+
+
+@pytest.mark.parametrize("startup_failure", [False, True])
+def test_process_stdout_is_protocol_only(tmp_path: Path, startup_failure: bool) -> None:
+    """真实进程覆盖 import/reset/step 日志及 fd 1 写入，不放宽 JSONL parser。"""
+
+    root = tmp_path / "environment"
+    root.mkdir()
+    (root / "metadata.json").write_text('{"entrypoint":"environment.py"}', encoding="utf-8")
+    source = Path("tests/fixtures/sidecar/environment.py").read_text(encoding="utf-8")
+    noise = (
+        "import os, logging, sys\n"
+        'print("game print diagnostic", flush=True)\n'
+        'os.write(1, b"native diagnostic\\n")\n'
+        "logging.basicConfig(stream=sys.stdout, level=logging.INFO, force=True)\n"
+        'logging.info("SDK logger diagnostic")\n'
+    )
+    source = source.replace(
+        "        self.steps = 0",
+        '        print("reset diagnostic", flush=True)\n        self.steps = 0',
+    )
+    source = source.replace(
+        "        del data", '        print("step diagnostic", flush=True)\n        del data'
+    )
+    if startup_failure:
+        source = source.replace(
+            "    return FixtureEnvironment(seed)",
+            '    raise RuntimeError("fixture startup failure")',
+        )
+    (root / "environment.py").write_text(noise + source, encoding="utf-8")
+    # 不继承主进程凭据或 cwd 的 .env；解释器路径保留 venv，不解析 symlink。
+    command = [
+        sys.executable,
+        "-m",
+        "pi_arc_sidecar.sidecar",
+        "--environment-root",
+        str(root),
+        "--cache-root",
+        str(tmp_path / "receipts"),
+        "--game-id",
+        "ls20-9607627b",
+        "--seed",
+        "42",
+        "--source-locator",
+        OPEN_PAYLOAD["sourceLocator"],
+        "--tree-digest",
+        OPEN_PAYLOAD["treeDigest"],
+    ]
+    env = {
+        "PATH": os.defpath,
+        "PYTHONPATH": str(Path("python").resolve()),
+        "PI_ARC_BLOCK_NETWORK": "1",
+    }
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=tmp_path,
+        env=env,
+    )
+    try:
+        assert process.stdin is not None and process.stdout is not None
+        request = {
+            "schema": "pi-arc.sidecar.v1",
+            "requestId": "open1",
+            "type": "open",
+            "payload": OPEN_PAYLOAD,
+        }
+        process.stdin.write(json.dumps(request) + "\n")
+        process.stdin.flush()
+        opened = json.loads(process.stdout.readline())
+        assert opened["schema"] == "pi-arc.sidecar.v1"
+        if startup_failure:
+            assert opened["ok"] is False
+            assert "fixture startup failure" in opened["error"]["message"]
+            remaining, diagnostics = process.communicate(timeout=10)
+            assert remaining == ""
+            assert process.returncode == 1
+        else:
+            assert opened["ok"] is True
+            payload = opened["payload"]
+            anchor = payload["anchor"]
+            action: dict[str, Any] = {
+                "environmentInstanceId": payload["environmentInstanceId"],
+                "baseTurn": anchor["turn"],
+                "baseObservationDigest": anchor["observationDigest"],
+                "actionId": "action1",
+                "action": {"name": "ACTION7", "data": {}},
+            }
+            request.update(requestId="step1", type="submit_action", payload=action)
+            remaining, diagnostics = process.communicate(json.dumps(request) + "\n", timeout=10)
+            response = json.loads(remaining)
+            assert response["ok"] is True
+            assert response["payload"]["receipt"]["status"] == "complete"
+            assert "step diagnostic" in diagnostics
+            assert process.returncode == 0
+        for marker in ["game print diagnostic", "native diagnostic", "SDK logger diagnostic"]:
+            assert marker in diagnostics
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=10)

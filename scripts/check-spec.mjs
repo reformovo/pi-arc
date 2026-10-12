@@ -1,20 +1,8 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { reportFailure, runCommand } from "./lib/run-command.mjs";
-
-/** @param {string} root @returns {Promise<string[]>} */
-async function collectMarkdown(root) {
-	/** @type {string[]} */
-	const files = [];
-	for (const entry of await readdir(root, { withFileTypes: true })) {
-		if ([".git", ".delta", "node_modules", ".venv"].includes(entry.name)) continue;
-		const candidate = path.join(root, entry.name);
-		if (entry.isDirectory()) files.push(...(await collectMarkdown(candidate)));
-		else if (entry.isFile() && entry.name.endsWith(".md")) files.push(candidate);
-	}
-	return files;
-}
+import { collectMarkdown } from "./lib/spec-markdown.mjs";
 
 /** @param {string} file */
 async function fileExists(file) {

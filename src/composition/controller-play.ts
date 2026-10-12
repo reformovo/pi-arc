@@ -5,8 +5,8 @@
  * Observation 和最后一帧 Visual 交回模型，不能反过来证明 Environment 完成。
  */
 
-import type { ToolEvidencePort, ToolPlayPort } from "../application/model-tools.js";
-import { type ControllerPorts, RunController } from "../application/run-controller.js";
+import { ModelToolError, type ToolEvidencePort, type ToolPlayPort } from "../application/model-tools.js";
+import { ActionRejectedError, type ControllerPorts, RunController } from "../application/run-controller.js";
 
 /** WP-09 组装时直接注入此闭包，确保 Pi attach 使用 WP-06 的同实例 reconciliation。 */
 export function recoverController(runId: string, ports: ControllerPorts): () => Promise<RunController> {
@@ -17,12 +17,19 @@ export function recoverController(runId: string, ports: ControllerPorts): () => 
 export function controllerPlayPort(controller: RunController, evidence: ToolEvidencePort): ToolPlayPort {
 	return {
 		play: async ({ invocationId, action, retryState }) => {
-			const turn = await controller.play({
-				actionId: invocationId,
-				invocationId,
-				action,
-				...(retryState === null ? {} : { retryState }),
-			});
+			const turn = await controller
+				.play({
+					actionId: invocationId,
+					invocationId,
+					action,
+					...(retryState === null ? {} : { retryState }),
+				})
+				.catch((error: unknown) => {
+					// admission 拒绝是可修正的工具输入错误，不是存储故障。
+					// 仅映射 controller 的显式拒绝；commit/storage 异常仍原样传播。
+					if (error instanceof ActionRejectedError) throw new ModelToolError("invalid_request", error.message);
+					throw error;
+				});
 			const last = await evidence.readFrame(turn.turn, null);
 			return {
 				result: {

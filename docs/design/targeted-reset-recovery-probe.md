@@ -1,0 +1,21 @@
+# 小范围定向 RESET / 坐标恢复验证
+
+用户明确选择小范围诊断。它不是公平新Run通关评测，不改变正式任务提示词或publicSDKtool-driving surface。
+
+## 来源与分阶段
+
+setup在新缓存环境重放旧FT09先179个已完成动作，必须逐一建立sourceintent/completeReceipt/Turncommit关联，再与新环境actualObservation/Frame比较；单独记录driver_replaysetup来源与actionIds，不把setup称官方模型输出。旧session/notes/terminal不复制，无VISTA解法/任务经验注入。
+
+确认当前GAME_OVER后通过正式controller执行RESET，提供solutionfree retry_state，验证新Attempt/保留progress。用当前RuntimeKnowledgeBridge+currentVisual生成模型恢复上下文；官方模型identitydeepseek/deepseek-flash明确，usage只算live阶段。
+
+## 安全与限额
+
+最多8个官方模型请求、每次maxoutput1024（总最多8192）、retry0、120s请求/约12minlive阶段；最多12postRESETAction。每次响应最多1playadmit，正常toolvalidator/anchor/replay规则，pendingreceipt先结算、未知分类不伪造。Sourceproof/SDKreplay/RESET失败即停止，不发provider；live失败或超限即停止，不重启/加预算。实验总工具尝试最多16、每次请求图像最多64（诊断资源上限，不是官方model capacity）；保留完整initialvisual和实际inspect/play返回图片，不隐蔽丢弃、裁剪或替换历史。超过诊断图像限额时provider调用前停止并报告inconclusive，不强行把inspection限制成1图。
+
+正文/images/auth/header/rawexceptions不落日志；报告仅identity、setup动作数/验证布尔、modelusage、实际toolinput坐标与环境坐标（游戏公开证据、非密钥）、终止分类及audit。诊断archive含真实原生authority记录与专门provenance，不造benchmark成绩。Node --env-file由parent加载，脚本不直接读取.env；官方hostguard不把Go密钥发送其他服务。
+
+## 验收
+
+离线fakeenvironment/fauxModels验证完成proofjoin、GAME_OVER无RESETavailability、复原authority、projected1024回native正确且archive不改、maxrequest/actions/singleplay/cleanup。真实模型是否在该单样本正确使用坐标可测，但不能证明永远遵循或模型已通关。
+
+状态：driver完善与回归进行中，未执行live。此前纯offlineplan不是本验收结果。

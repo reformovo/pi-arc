@@ -48,7 +48,34 @@ npm run build
 
 构建后可运行 `node dist/composition/cli.js run|resume|audit`；SDK 从包根导入 `createPiArcHost`，由调用者传入公开 `pi-ai` Models。CLI flags、JSONL 和退出码以[规范第 15.4 节](docs/pi-arc.md#154-无头-cli-的精确-surface)为准。`audit` 不创建 Environment 或调用模型。
 
-`run --game-offline` 要求已验证的 Game cache，仅禁止 Game 获取网络，不禁止模型网络。未启用该 flag 时，cache miss 会通过官方 SDK 获取；可通过环境提供 `ARC_API_KEY`，缺省走 SDK 匿名路径，不把 key 放入 argv。真实下载与真实模型调用不属于 required checks，仍须明确授权。当前验证范围为 fake Game + faux Models，未证明生产 catalog 网络连通性。
+### OpenAI-compatible / VISTA 对比配置
+
+当前真实验证默认使用 DeepSeek 官方渠道，OpenCode Go 暂停；其接入与历史记录保留作对照。复制 `.env.example` 为 `.env`（若已有则不要覆盖）；示例默认 DeepSeek 官方地址，未来 OpenCode Go 对比需单独授权、先改为 Go 地址并使用 `opencode-go`。填写 `OPENAI_API_KEY`（不再使用旧配置名 `OPENCODE_API_KEY`）；`ARC_API_KEY` 可选。用 `node --env-file=.env` 显式加载，shell 中已有变量优先。不要在示例文件中填写真实密钥。
+
+```bash
+node --env-file=.env dist/composition/cli.js run \
+  --game-id cd82-fb555c5d --game-cache ./game-cache \
+  --provider deepseek --model deepseek-flash --thinking max \
+  --action-budget 400 --artifacts ./run-artifacts/cd82-official-first
+```
+
+`OPENAI_BASE_URL=https://opencode.ai/zen/go/v1` 与 `OPENAI_API_KEY` 配对使用。官方地址 `https://api.deepseek.com` 使用 `deepseek` provider，OpenCode Go 地址使用 `opencode-go` provider；两者都发送 `deepseek-flash`，但必须填写对应服务自己的密钥。不得把 OpenCode key 发到 DeepSeek。其他 provider 的默认认证不受影响；不改写 provider payload。历史 alias 的实际能力仍须真实试运行确认；费用元数据仅沿用目录估算，不代表 alias 的实际计费。未配置时保持内置目录。URL 必须是无凭据、query 或 fragment 的 HTTP(S) base URL。SDK 调用者仍自行传入 Models，不隐式读取这个变量。
+
+`run --game-offline` 要求已验证的 Game cache，仅禁止 Game 获取网络，不禁止模型网络。未启用该 flag 时，cache miss 会通过官方 SDK 获取；可通过环境提供 `ARC_API_KEY`，缺省走 SDK 匿名路径，不把 key 放入 argv。真实下载与真实模型调用不属于 required checks，仍须明确授权。required checks 仍只使用 fake Game + faux Models。2026-10-08 的独立授权真实测试已通过官方获取，并以 `opencode-go/deepseek-flash` 完成 `cd82-fb555c5d`（134 Action、6/6、WIN、audit=true）；该结果早于后续 checkpoint 修复，不代表新策略已通过真实 provider 验证。
+
+### 上下文与诊断
+
+上下文策略按 VISTA 模型窗口预留量触发：normal=`contextWindow-72000`，checkpoint=`contextWindow-32000`（100 万窗口为 928000/968000）。以完整 input+cacheRead+cacheWrite 判断，不使用扣除缓存后的 input。先暂停普通工具，在旧上下文保存 ARC checkpoint，再通过公开 Pi 导航进入真正的新上下文并交付权威记录、GUIDE/WORKING 和当前最终图像；不直接修改 provider payload。OpenCode Go DeepSeek 的独立 64 图片兼容上限通过图片容量 checkpoint 执行：`play` 预留1图、`inspect` 预留实际视图数（最多16）；不足则先保存checkpoint进入新Context，不滚动替换已发送历史图片。其他provider不推断该64上限。恢复已接纳工具结果先结算；超容旧Context的provider请求被公开effect gate阻断。
+
+runtime 指标通过 `payload.phase=provider_request` 区分每次 provider request 与外层 operation；usage、图片数和耗时不包含正文或凭据。实现、已修复问题与未验证项见 [审计报告](docs/reviews/real-run-audit-2026-10-08.md) 和 [VISTA 对齐设计](docs/design/real-run-context-follow-up.md)。
+
+## 实测基线与后续策略
+
+本阶段修复、诊断工具与验收分类见 [阶段基线](docs/reviews/stage-baseline-2026-10-12.md) 和 [问题关闭清单](docs/reviews/issue-closure-checklist-2026-10-10.md)。官方 cd82（121 Action）和 ft09（227 Action 含一次 RESET）均完成 6/6 并通过 audit；最小官方坐标契约 probe 也通过。单次结果不代表与 VISTA 同后端、同 seed 的稳定优势，token 容量 checkpoint、跨平台故障与依赖告警仍有未关闭项。
+
+离线缓存诊断现在用受检查的 `scripts/diagnose-cache.mjs`，须先 `npm run build`。各 probe 默认离线，真实模式须显式授权和 `--live`，不能把诊断 setup 重放当模型通关成绩。运行产物与 `.env` 不纳入源码提交；Git 忽略不保证共享编辑保密。
+
+[笔记语义策略](docs/design/knowledge-summary-policy.md) 仅为下一阶段评审方案，目前没有修改 TASK/system 提示词、笔记写入频率或开启新游戏实验。
 
 ## 文档权威顺序
 

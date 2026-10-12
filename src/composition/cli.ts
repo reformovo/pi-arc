@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * 无头 CLI：只把 SDK 的持久事件投影到 stdout JSONL。
  *
@@ -9,9 +10,10 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import { createModels } from "@earendil-works/pi-ai";
 import { FULL_GAME_ID } from "../adapters/game-resolver.js";
 import type { JsonValue } from "../protocol/canonical-json.js";
+import { createCliModels, InvalidCliModelConfiguration } from "./cli-models.js";
 import { createPiArcHost } from "./index.js";
 import type { PiArcHost, RunInvocationResult, RunRequest, RunResult } from "./pi-arc-host.js";
 import type { RunEvent, RunEventType } from "./run-events.js";
@@ -83,7 +85,7 @@ function parseFlags(command: string, args: string[]): Map<string, string> | null
 /** 测试注入 faux host 与 I/O；生产入口仅使用公开 pi-ai Models。 */
 export async function runCli(
 	argv: string[],
-	host: PiArcHost,
+	hostOrFactory: PiArcHost | ((command: "run" | "resume" | "audit") => PiArcHost),
 	io: CliIo = defaultIo,
 	now: () => string = () => new Date().toISOString(),
 ): Promise<number> {
@@ -100,6 +102,53 @@ export async function runCli(
 		return 2;
 	}
 	const artifactRoot = flags.get("--artifacts") as string;
+	let request: RunRequest | undefined;
+	if (command === "run") {
+		const budgetText = flags.get("--action-budget");
+		const thinking = flags.get("--thinking");
+		if (thinking !== undefined && !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(thinking)) {
+			io.stdout(`${JSON.stringify(finalEvent(1, null, "run.rejected", { reason: "invalid_thinking" }, now))}\n`);
+			return 2;
+		}
+		if (budgetText !== undefined && (!/^[1-9][0-9]*$/.test(budgetText) || Number(budgetText) > 999_999)) {
+			io.stdout(
+				`${JSON.stringify(finalEvent(1, null, "run.rejected", { reason: "invalid_action_budget" }, now))}\n`,
+			);
+			return 2;
+		}
+		if (!FULL_GAME_ID.test(flags.get("--game-id") as string)) {
+			io.stdout(`${JSON.stringify(finalEvent(1, null, "run.rejected", { reason: "invalid_game_id" }, now))}\n`);
+			return 2;
+		}
+		request = {
+			gameId: flags.get("--game-id") as string,
+			gameCache: flags.get("--game-cache") as string,
+			provider: flags.get("--provider") as string,
+			modelId: flags.get("--model") as string,
+			artifactRoot,
+			...(flags.has("--game-offline") ? { gameOffline: true } : {}),
+			...(thinking === undefined ? {} : { thinkingLevel: thinking as NonNullable<RunRequest["thinkingLevel"]> }),
+			...(budgetText === undefined ? {} : { actionBudget: Number(budgetText) }),
+		};
+	}
+
+	// 先完成静态校验；audit 的工厂不接触 provider 配置或凭据。
+	let host: PiArcHost;
+	try {
+		host = typeof hostOrFactory === "function" ? hostOrFactory(command) : hostOrFactory;
+	} catch (error) {
+		if (command === "audit") {
+			io.stdout(
+				`${JSON.stringify(finalEvent(1, null, "audit.completed", { ok: false, reason: "archive_invalid" }, now))}\n`,
+			);
+			return 30;
+		}
+		const invalid = error instanceof InvalidCliModelConfiguration;
+		const reason = invalid ? "invalid_model_configuration" : "model_configuration_unavailable";
+		io.stdout(`${JSON.stringify(finalEvent(1, null, "run.rejected", { reason }, now))}\n`);
+		io.stderr(`pi-arc: ${reason}\n`);
+		return invalid ? 2 : 3;
+	}
 	if (command === "audit") {
 		try {
 			const report = await host.audit(artifactRoot);
@@ -127,33 +176,7 @@ export async function runCli(
 	}
 
 	let invocation: RunInvocationResult;
-	if (command === "run") {
-		const budgetText = flags.get("--action-budget");
-		const thinking = flags.get("--thinking");
-		if (thinking !== undefined && !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(thinking)) {
-			io.stdout(`${JSON.stringify(finalEvent(1, null, "run.rejected", { reason: "invalid_thinking" }, now))}\n`);
-			return 2;
-		}
-		if (budgetText !== undefined && (!/^[1-9][0-9]*$/.test(budgetText) || Number(budgetText) > 999_999)) {
-			io.stdout(
-				`${JSON.stringify(finalEvent(1, null, "run.rejected", { reason: "invalid_action_budget" }, now))}\n`,
-			);
-			return 2;
-		}
-		if (!FULL_GAME_ID.test(flags.get("--game-id") as string)) {
-			io.stdout(`${JSON.stringify(finalEvent(1, null, "run.rejected", { reason: "invalid_game_id" }, now))}\n`);
-			return 2;
-		}
-		const request: RunRequest = {
-			gameId: flags.get("--game-id") as string,
-			gameCache: flags.get("--game-cache") as string,
-			provider: flags.get("--provider") as string,
-			modelId: flags.get("--model") as string,
-			artifactRoot,
-			...(flags.has("--game-offline") ? { gameOffline: true } : {}),
-			...(thinking === undefined ? {} : { thinkingLevel: thinking as NonNullable<RunRequest["thinkingLevel"]> }),
-			...(budgetText === undefined ? {} : { actionBudget: Number(budgetText) }),
-		};
+	if (request !== undefined) {
 		invocation = await host.run(request);
 	} else invocation = await host.resume({ artifactRoot });
 	if (invocation.status === "rejected") {
@@ -209,7 +232,9 @@ export async function runCli(
 }
 
 if (process.argv[1] !== undefined && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-	runCli(process.argv.slice(2), createPiArcHost(builtinModels())).then(
+	runCli(process.argv.slice(2), (command) =>
+		createPiArcHost(command === "audit" ? createModels() : createCliModels()),
+	).then(
 		(code) => {
 			process.exitCode = code;
 		},
