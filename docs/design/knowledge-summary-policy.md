@@ -1,4 +1,4 @@
-# 笔记语义策略：离线实验候选，不修改生产提示词
+# 笔记语义策略：待评审，不修改生产提示词
 
 用户要求按建议顺序推进：先稳定基线，再评审notes策略。harness坐标歧义/Attempt来源已修，不用模板补丁掩盖工具错误。本文是设计证据，不改变accepted规范/TASK/system/tooldescription，也不开始真实实验。
 
@@ -51,24 +51,6 @@ WORKING当前任务：
 
 这是对已保存作者笔记的人工标注，不推断VISTA探索前已知规则、不修改旧notes。新策略验收要比较恢复后不必要重读、重复被反证试验与错误坐标；不能只说“多写了GUIDE所以好”。
 
-## 本阶段最小实施与边界
+## 当前待决定
 
-基线为 d15d09b + b89a371，已落入本线程 main。采用 C 形成离线候选，仍不是 accepted 规范修订或生产默认策略。新增 `scripts/lib/note-policy-experiment.mjs` 仅向离线调用者提供 `selectNotePolicyPrompt(baseline, strategy)`：显式 `baseline` 逐字返回原输入，`notes-v1` 在原输入后追加明确标记的 **新的 agent 策略**。无隐式环境变量、正式 CLI flag、SDK 参数、工具/schema/description 或生产 runtime 接线；因此正常 Run 仍使用原任务提示基线，不声称新增 addendum 后逐字/逐行为对齐 VISTA。真实调用仍须另行授权。
-
-反证时撤回或收窄 GUIDE 的相关假设，记录试验条件；污染或起点未知的失败不能当干净反证。RESET 前可以先更新 GUIDE；若无法更新，retry_state 必须明确引用陈旧结论和反证，不让宿主选择哪套游戏规则正确。retry_state 区分旧状态与 RESET 后待观察状态，不能提前宣称新 Attempt 已成立。Level 切换后不把旧 WORKING、palette 或坐标当新 Level 的事实。
-
-checkpoint request 生效后所有普通工具受规范 gate 拒绝，所以只能用 `save_compact_checkpoint` 同时提交 GUIDE/working_memory；GUIDE 仍一致才可传 null。策略不要求 gate 内额外 write，不改 RESET pending/commit 或 Level archive 的工程规则。
-
-## 离线验收与尚未测得的效果
-
-模块复用上述四组 FT09 rubric，输出 `offline_manual_review`。来源只是已提交的工作质量评审摘录，不是重新读取原始 run artifacts 的审计；保留 pass/fail/unknown，不自动根据词汇或笔记长度打语义分、不改历史作者笔记。v549/v550 坐标冲突记录为历史已修 harness 问题，不能归为新策略接线失败。逐项注释及来源在模块中，unknown 不计为通过或失败。
-
-自动测试验收：baseline 输入字节保持、notes-v1 独立标记、未知选择拒绝；策略覆盖反证、污染、RESET冲突、Level清理、checkpoint gate 和 visual1024；四组人工标注来源存在、缺证据保持 unknown、效果明确未测。提示文本测试只证明指令存在，不证明模型服从。既有 recovery/partial-write/坐标 proofjoin 回归继续由完整门禁验证。
-
-离线报告可在项目根目录运行（不创建 Environment、不调用 provider、不读取 .env）：
-
-```bash
-node --input-type=module -e 'import { offlineNotePolicyReport } from "./scripts/lib/note-policy-experiment.mjs"; console.log(JSON.stringify(offlineNotePolicyReport(), null, 2))'
-```
-
-未来另行授权的小范围 A/B 应冻结同一 source digest、Game/seed、official provider/model/revision（无法冻结则披露）、预算和恢复锚点。验收先看恢复后请求数/耗时、重复已反证试验、错误坐标、反证到作者更新的延迟、动作与输出 token/成本；同时检查 GUIDE/retry_state 是否一致及试验起点/动作/观察是否可查。记录负例和 unknown，不能用写入次数/长度替代质量，不能用历史 WIN 或零网络离线测试宣称收益。暂不设无证据的改善百分比，不启动付费整局或 WP-10。
+是否采用C并允许额外addendum实验？是否先人工标注已有三版GUIDE/WORKING形成评测rubric？推荐先人工rubric和设计审阅，稳定stage代码提交后再实验。本文无已实施模板或收益承诺。
