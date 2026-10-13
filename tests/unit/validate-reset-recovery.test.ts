@@ -252,7 +252,8 @@ describe("diagnostic authority and live boundary (offline fixtures only)", () =>
 				expect(options).toMatchObject({ reasoning: "max", maxTokens: 1024, maxRetries: 0, timeoutMs: 120000 });
 				const wire = JSON.stringify(context);
 				expect(wire).toContain("visual_1024");
-				expect(wire).toContain("canonical_replay_equivalent");
+				expect(wire).toContain("not the original model input");
+				expect(wire).toContain("game_actions");
 				expect(wire).toContain('\\"attempt\\":2');
 				expect(wire).not.toContain("source-instance");
 				expect(model.provider).toBe(f.faux.provider.id);

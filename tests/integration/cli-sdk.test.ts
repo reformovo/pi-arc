@@ -487,7 +487,56 @@ describe("WP-09 offline host", () => {
 				stopReason: "toolUse",
 			}),
 			fauxAssistantMessage("reset complete"),
-			fauxAssistantMessage([fauxToolCall("play", { action: "ACTION7" })], { stopReason: "toolUse" }),
+			(context) => {
+				const users = context.messages.filter((message) => message.role === "user");
+				const recovery = users.at(-1);
+				if (!recovery) throw new Error("Missing fresh recovery message");
+				const text =
+					typeof recovery.content === "string"
+						? recovery.content
+						: recovery.content
+								.filter((part) => part.type === "text")
+								.map((part) => part.text)
+								.join("\n");
+				const environment = JSON.parse(text.split("\n")[1] ?? "") as { current_level_history: unknown };
+				expect(environment.current_level_history).toMatchObject({
+					attempts: [
+						{ attempt: 1, game_actions: 1, outcome: "GAME_OVER", end_turn: 1 },
+						{ attempt: 2, game_actions: 0, start: "reset", start_turn: 2 },
+					],
+					truncated: false,
+				});
+				const record = JSON.parse(text.split("\n")[1] ?? "") as { last_action_result: { action: unknown } };
+				expect(record.last_action_result.action).toEqual({ name: "RESET", data: {} });
+				const notes = JSON.parse(text.split("\n")[4] ?? "") as { working_memory: unknown };
+				expect(notes.working_memory).toBe("try the other action");
+				expect(
+					Array.isArray(recovery.content) && recovery.content.filter((part) => part.type === "image"),
+				).toHaveLength(1);
+				return fauxAssistantMessage([fauxToolCall("history", { view: "events" })], { stopReason: "toolUse" });
+			},
+			(context) => {
+				const results = context.messages.filter((message) => message.role === "toolResult");
+				const history = results.at(-1);
+				if (!history) throw new Error("Missing provider-visible history result");
+				const text = history.content
+					.filter((part) => part.type === "text")
+					.map((part) => part.text)
+					.join("\n");
+				const envelope = JSON.parse(text) as {
+					name: string;
+					ok: boolean;
+					result: { events: Array<{ action: unknown }> };
+				};
+				expect(envelope).toMatchObject({ name: "history", ok: true });
+				expect(envelope.result.events.map((event) => event.action)).toEqual([
+					null,
+					{ name: "ACTION1", data: {} },
+					{ name: "RESET", data: {} },
+				]);
+				expect(text).not.toContain("try the other action");
+				return fauxAssistantMessage([fauxToolCall("play", { action: "ACTION7" })], { stopReason: "toolUse" });
+			},
 			fauxAssistantMessage("done"),
 		]);
 		const result = await setup.host.run(setup.request());
@@ -509,6 +558,64 @@ describe("WP-09 offline host", () => {
 		expect(commits[3]?.payload).toMatchObject({ observation: { state: "WIN" } });
 		expect(domain).toContain('"boundaryPending":true');
 		expect(domain).toContain('"recordType":"context.boundary"');
+	});
+
+	it("delivers ACTION6 history to the provider and maps its visual center through play to the same native cell", async () => {
+		const setup = await fixture();
+		try {
+			setup.faux.setResponses([
+				fauxAssistantMessage([fauxToolCall("play", { action: "ACTION6", x: 408, y: 120 })], {
+					stopReason: "toolUse",
+				}),
+				fauxAssistantMessage([fauxToolCall("history", { view: "events", start_turn: 1, end_turn: 1 })], {
+					stopReason: "toolUse",
+				}),
+				(context) => {
+					const result = context.messages.filter((message) => message.role === "toolResult").at(-1);
+					if (!result) throw new Error("Missing provider-visible history");
+					const text = result.content
+						.filter((part) => part.type === "text")
+						.map((part) => part.text)
+						.join("\n");
+					const envelope = JSON.parse(text) as {
+						name: string;
+						ok: boolean;
+						result: { events: Array<{ action: { name: string; data: { x: number; y: number } } }> };
+					};
+					expect(envelope).toMatchObject({ name: "history", ok: true });
+					expect(envelope.result.events).toHaveLength(1);
+					const action = envelope.result.events[0]?.action;
+					expect(action).toEqual({
+						name: "ACTION6",
+						data: { x: 408, y: 120 },
+						coordinateSpace: "visual_1024",
+						coordinateRepresentation: "canonical_replay_equivalent",
+					});
+					if (!action) throw new Error("Missing history action");
+					// Explicit new faux action at the displayed cell; not recovery replay of an old actionId.
+					return fauxAssistantMessage(
+						[fauxToolCall("play", { action: action.name, x: action.data.x, y: action.data.y })],
+						{ stopReason: "toolUse" },
+					);
+				},
+			]);
+			const request = { ...setup.request(), actionBudget: 2 };
+			expect(await setup.host.run(request)).toMatchObject({
+				status: "terminated",
+				result: { terminationReason: "action_budget_exhausted", lastCommittedTurn: 2, audit: { ok: true } },
+			});
+			const records = await new ArtifactStore(request.artifactRoot).readDomain();
+			const intents = records.filter((record) => record.recordType === "action.intent");
+			const receipts = records.filter((record) => record.recordType === "environment.receipt");
+			expect(intents).toHaveLength(2);
+			expect(receipts).toHaveLength(2);
+			for (const record of [...intents, ...receipts])
+				expect(record.payload.action).toEqual({ name: "ACTION6", data: { x: 25, y: 7 } });
+			expect(intents[0]?.payload.actionId).not.toBe(intents[1]?.payload.actionId);
+			expect(setup.faux.state.callCount).toBe(3);
+		} finally {
+			await rm(setup.root, { recursive: true, force: true });
+		}
 	});
 
 	it("starts a real sidecar, commits WIN and exposes a read-only SDK audit/event stream", async () => {

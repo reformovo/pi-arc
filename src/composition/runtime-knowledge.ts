@@ -6,40 +6,14 @@
  */
 
 import type { ArtifactStore, DomainRecord } from "../adapters/artifact-store.js";
+import { committedActionProjection } from "../application/committed-action-projection.js";
 import { buildBoundaryRecoveryPrompt, CHECKPOINT_PROMPT } from "../application/model-prompts.js";
 import { canonicalJson, type JsonValue } from "../protocol/canonical-json.js";
 import type { KnowledgeStore } from "./knowledge-store.js";
 import type { RuntimeAuthority } from "./pi-runtime.js";
 
-/** 原生 intent/receipt 精确校验后才投影；恢复坐标统一为 1024 bin 中心，不冒充原模型输入或改写 Evidence。 */
-function modelFacingAction(action: JsonValue): JsonValue {
-	if (action === null || typeof action !== "object" || Array.isArray(action) || action.name !== "ACTION6")
-		return action;
-	const data = action.data;
-	if (data === null || typeof data !== "object" || Array.isArray(data))
-		throw new Error("recovery ACTION6 native coordinates must be integers in 0..63");
-	const { x, y } = data;
-	if (
-		typeof x !== "number" ||
-		typeof y !== "number" ||
-		!Number.isInteger(x) ||
-		!Number.isInteger(y) ||
-		x < 0 ||
-		x > 63 ||
-		y < 0 ||
-		y > 63
-	)
-		throw new Error("recovery ACTION6 native coordinates must be integers in 0..63");
-	return {
-		...action,
-		data: { ...data, x: x * 16 + 8, y: y * 16 + 8 },
-		coordinateSpace: "visual_1024",
-		coordinateRepresentation: "canonical_replay_equivalent",
-	};
-}
-
 const RECOVERY_COORDINATE_DIRECTIVE =
-	"Recovery coordinate rule: ACTION6 action.data.x/y in last_action_result and current_level_history use visual_1024 coordinates (0..1023), the same coordinates accepted by play. These are canonical bin centers derived from committed native coordinates (native * 16 + 8), not the original model input; they map to the exact same native cell. Use them directly as play x/y; do not divide by 16. Recovery describes already committed actions, not instructions to replay them.";
+	"Recovery coordinate rule: ACTION6 action.data.x/y in last_action_result use visual_1024 coordinates (0..1023), the same coordinates accepted by play. These are canonical bin centers derived from committed native coordinates (native * 16 + 8), not the original model input; they map to the exact same native cell. Use them directly as play x/y; do not divide by 16. Recovery describes already committed actions, not instructions to replay them.";
 
 export class RuntimeKnowledgeBridge {
 	constructor(
@@ -62,64 +36,105 @@ export class RuntimeKnowledgeBridge {
 
 	private async buildEnvelope(authority: RuntimeAuthority, guide: string, working: string): Promise<string> {
 		const records = await this.artifacts.readDomain();
-		// A pending intent is not a result. Resolve actions only through a preceding
-		// intent and the receipt referenced by the committed Turn, never transcript.
-		const committedAction = (commit: DomainRecord): JsonValue => {
-			if (commit.payload.actionId === null && commit.payload.turn === 0) return null;
-			const intent = records.find(
-				(record) =>
-					record.sequence < commit.sequence &&
-					record.recordType === "action.intent" &&
-					record.payload.actionId === commit.payload.actionId,
-			);
+		const committedAction = committedActionProjection(records);
+		const levelRecords = records.filter(
+			(record) =>
+				record.recordType === "turn.commit" &&
+				record.payload.level === authority.turn.level &&
+				typeof record.payload.turn === "number" &&
+				record.payload.turn <= authority.turn.turn,
+		);
+		const firstLevelRecord = levelRecords[0];
+		if (firstLevelRecord === undefined) throw new Error("recovery Level entry missing");
+		const firstTurn = firstLevelRecord.payload.turn;
+		const attempts: Array<JsonValue> = [];
+		{
+			const firstAttempt = firstLevelRecord.payload.attempt;
+			if (firstAttempt !== 1 || typeof firstTurn !== "number")
+				throw new Error("recovery Level entry Attempt missing");
 			if (
-				intent === undefined ||
-				typeof commit.payload.receiptDigest !== "string" ||
-				intent.payload.action === null ||
-				typeof intent.payload.action !== "object"
+				firstTurn > 0 &&
+				!records.some(
+					(record) =>
+						record.recordType === "turn.commit" &&
+						record.payload.turn === firstTurn - 1 &&
+						record.payload.level !== authority.turn.level,
+				)
 			)
-				throw new Error("recovery Action intent or receipt digest missing for committed Turn");
-			const receipt = records.find(
-				(record) =>
-					record.sequence > intent.sequence &&
-					record.sequence < commit.sequence &&
-					record.recordType === "environment.receipt" &&
-					record.payload.actionId === commit.payload.actionId &&
-					record.payload.receiptDigest === commit.payload.receiptDigest,
-			);
-			if (
-				receipt === undefined ||
-				receipt.payload.status !== "complete" ||
-				receipt.payload.environmentInstanceId !== intent.payload.environmentInstanceId ||
-				receipt.payload.baseTurn !== intent.payload.baseTurn ||
-				receipt.payload.baseObservationDigest !== intent.payload.baseObservationDigest ||
-				receipt.payload.turn !== commit.payload.turn ||
-				canonicalJson(receipt.payload.action ?? null) !== canonicalJson(intent.payload.action) ||
-				canonicalJson(receipt.payload.observation ?? null) !== canonicalJson(commit.payload.observation ?? null)
-			)
-				throw new Error("recovery Action/receipt/Turn commit mismatch");
-			return modelFacingAction(intent.payload.action);
+				throw new Error("recovery Level entry anchor missing");
+			committedAction(firstLevelRecord);
+			const stateOf = (record: DomainRecord): string => {
+				const observation = record.payload.observation;
+				if (
+					observation === null ||
+					typeof observation !== "object" ||
+					Array.isArray(observation) ||
+					typeof observation.state !== "string"
+				)
+					throw new Error("recovery Observation state missing");
+				return observation.state;
+			};
+			let current: {
+				attempt: number;
+				start: "level_entry" | "reset";
+				start_turn: number;
+				outcome: string;
+				game_actions: number;
+				end_turn: number;
+			} = {
+				attempt: firstAttempt,
+				start: "level_entry",
+				start_turn: firstTurn,
+				outcome: stateOf(firstLevelRecord),
+				game_actions: 0,
+				end_turn: firstTurn,
+			};
+			for (const record of levelRecords.slice(1)) {
+				const turn = record.payload.turn;
+				const attempt = record.payload.attempt;
+				if (typeof turn !== "number" || typeof attempt !== "number" || turn !== current.end_turn + 1)
+					throw new Error("recovery Attempt record incomplete");
+				const action = committedAction(record);
+				if (action === null) throw new Error("recovery committed Action missing");
+				if (typeof action === "object" && action !== null && !Array.isArray(action) && action.name === "RESET") {
+					if (attempt !== current.attempt + 1 || current.outcome !== "GAME_OVER")
+						throw new Error("recovery RESET Attempt mismatch");
+					attempts.push(current);
+					current = {
+						attempt,
+						start: "reset",
+						start_turn: turn,
+						outcome: stateOf(record),
+						game_actions: 0,
+						end_turn: turn,
+					};
+				} else {
+					if (attempt !== current.attempt) throw new Error("recovery Attempt changed without RESET");
+					if (current.outcome === "GAME_OVER" || current.outcome === "WIN")
+						throw new Error("recovery Action after ended Attempt");
+					current = {
+						...current,
+						game_actions: current.game_actions + 1,
+						outcome: stateOf(record),
+						end_turn: turn,
+					};
+				}
+			}
+			attempts.push(current);
+		}
+		const history: JsonValue = {
+			view: "attempts",
+			source: "environment action results",
+			level: authority.turn.level,
+			level_start_turn: firstTurn,
+			progress: {
+				completed: authority.turn.observation.levelsCompleted,
+				total: authority.turn.observation.winLevels,
+			},
+			attempts: attempts.slice(-128),
+			total_attempts: attempts.length,
+			truncated: attempts.length > 128,
 		};
-		const history: JsonValue = records
-			.filter(
-				(record) =>
-					record.recordType === "turn.commit" &&
-					record.payload.level === authority.turn.level &&
-					typeof record.payload.turn === "number" &&
-					record.payload.turn <= authority.turn.turn,
-			)
-			// Full history remains available through history; recovery is a bounded seed.
-			.slice(-128)
-			.map((record) => ({
-				turn: record.payload.turn ?? null,
-				level: record.payload.level ?? null,
-				attempt: record.payload.attempt ?? null,
-				attemptStatus: record.payload.attemptStatus ?? null,
-				actionId: record.payload.actionId ?? null,
-				action: committedAction(record),
-				observation: record.payload.observation ?? null,
-				observationDigest: record.payload.observationDigest ?? null,
-			}));
 		const lastCommit = records.find(
 			(record) =>
 				record.recordType === "turn.commit" &&

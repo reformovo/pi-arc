@@ -161,6 +161,79 @@ describe("runtime knowledge bridge", () => {
 		expect(await fixture.bridge.prepareBoundary(authority)).toBeNull();
 	});
 
+	it("bounds recovery summaries by Attempt count, not action count", async () => {
+		const records: DomainRecord[] = [committed(0)];
+		let current = turn(0);
+		for (let number = 1; number <= 258; number++) {
+			const reset = number % 2 === 0;
+			const action = { name: reset ? "RESET" : "ACTION1", data: {} };
+			const next: Turn = {
+				...turn(number),
+				attempt: 1 + Math.floor(number / 2),
+				observation: { ...observation, state: reset ? "NOT_FINISHED" : "GAME_OVER" },
+			};
+			const intent: DomainRecord = {
+				...committed(number),
+				sequence: records.length + 1,
+				recordType: "action.intent",
+				payload: {
+					actionId: next.actionId,
+					action,
+					environmentInstanceId: "env-1",
+					baseTurn: current.turn,
+					baseObservationDigest: current.observationDigest,
+				},
+			};
+			records.push(intent);
+			records.push({
+				...committed(number),
+				sequence: records.length + 1,
+				recordType: "environment.receipt",
+				payload: {
+					...intent.payload,
+					status: "complete",
+					turn: number,
+					observation: next.observation,
+					receiptDigest: `receipt-${number}`,
+				},
+			});
+			records.push({
+				...committed(number),
+				sequence: records.length + 1,
+				payload: { ...next, receiptDigest: `receipt-${number}` },
+			});
+			current = next;
+		}
+		const artifacts = { readDomain: async () => records } as unknown as ArtifactStore;
+		const knowledge = { read: async () => null, checkpointRequested: async () => false } as unknown as KnowledgeStore;
+		const bridge = new RuntimeKnowledgeBridge(artifacts, knowledge);
+		const prompt = await bridge.recoveryEnvelope({
+			turn: current,
+			termination: null,
+			finish: () => Promise.reject(new Error("unused")),
+		});
+		const environment = JSON.parse(prompt.split("\n")[1] ?? "") as {
+			current_level_history: {
+				attempts: Array<{ attempt: number; game_actions: number; outcome: string }>;
+				total_attempts: number;
+				truncated: boolean;
+			};
+		};
+		expect(environment.current_level_history.total_attempts).toBe(130);
+		expect(environment.current_level_history.truncated).toBe(true);
+		expect(environment.current_level_history.attempts).toHaveLength(128);
+		expect(environment.current_level_history.attempts[0]).toMatchObject({
+			attempt: 3,
+			game_actions: 1,
+			outcome: "GAME_OVER",
+		});
+		expect(environment.current_level_history.attempts.at(-1)).toMatchObject({
+			attempt: 130,
+			game_actions: 0,
+			outcome: "NOT_FINISHED",
+		});
+	});
+
 	it("uses empty notes and no last action for the initial Turn", async () => {
 		const fixture = bridgeFixture();
 		fixture.setNotesPresent(false);

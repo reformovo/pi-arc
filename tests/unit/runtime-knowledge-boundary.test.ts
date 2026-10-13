@@ -12,6 +12,7 @@ import { type KnowledgeIo, KnowledgeStore } from "../../src/composition/knowledg
 import { RuntimeKnowledgeBridge } from "../../src/composition/runtime-knowledge.js";
 import { mapAction6Point } from "../../src/domain/game-visual.js";
 import { canonicalJson, type JsonValue } from "../../src/protocol/canonical-json.js";
+import { candidateHistoryAction } from "../support/vista-alignment-candidates.js";
 
 const at = "2026-09-24T00:00:00Z";
 const guide = "Verified: ACTION6 selects the tile at (x,y). Hypothesis: blue tiles open the gate; untested.";
@@ -75,9 +76,10 @@ async function fixture() {
 		action: { name: "ACTION6" | "RESET"; data: Record<string, JsonValue> },
 		levelsCompleted: number,
 		retryState: string | null = null,
+		state: "NOT_FINISHED" | "GAME_OVER" = "NOT_FINISHED",
 	) => {
 		const base = current;
-		const observation = { ...base.observation, levelsCompleted };
+		const observation = { ...base.observation, levelsCompleted, state };
 		const receipt = {
 			actionId,
 			status: "complete",
@@ -155,15 +157,19 @@ function decode(prompt: string) {
 				observationDigest: string;
 			};
 			current_level_history: {
-				turn: number;
 				level: number;
-				attempt: number;
-				attemptStatus: string;
-				actionId: string;
-				action: JsonValue;
-				observation: Turn["observation"];
-				observationDigest: string;
-			}[];
+				level_start_turn: number;
+				attempts: Array<{
+					attempt: number;
+					start: string;
+					start_turn: number;
+					outcome: JsonValue;
+					game_actions: number;
+					end_turn: number;
+				}>;
+				total_attempts: number;
+				truncated: boolean;
+			};
 		},
 		notes: JSON.parse(lines[4] ?? "") as { guide: string; working_memory: string },
 	};
@@ -237,7 +243,9 @@ describe("offline boundary recovery content quality", () => {
 			const before = await f.bridge.recoveryEnvelope(f.authority());
 			const recovered = decode(before).environment;
 			expect(recovered.last_action_result.action).toEqual(projected(x, y));
-			expect(recovered.current_level_history[1]?.action).toEqual(projected(x, y));
+			// Test-only history candidate uses the same validated projection, not raw intent coordinates.
+			expect(candidateHistoryAction(recovered.last_action_result)).toEqual(projected(x, y));
+			expect(recovered.current_level_history.attempts).toHaveLength(1);
 			expect(mapAction6Point(projected(x, y).data.x, projected(x, y).data.y)).toEqual({ x, y });
 			expect(before).toContain("not the original model input");
 			expect(before).toContain("do not divide by 16");
@@ -320,7 +328,11 @@ describe("offline boundary recovery content quality", () => {
 		});
 		const invalidArtifacts = { readDomain: async () => records } as unknown as ArtifactStore;
 		const bridge = new RuntimeKnowledgeBridge(invalidArtifacts, f.knowledge);
-		await expect(bridge.recoveryEnvelope(f.authority())).rejects.toThrow(/recovery Action/);
+		await expect(
+			bridge
+				.recoveryEnvelope(f.authority())
+				.then((prompt) => candidateHistoryAction(decode(prompt).environment.last_action_result)),
+		).rejects.toThrow(/recovery Action/);
 	});
 
 	it("restores exact committed notes and action progress across levels, RESET and interrupted checkpoint delivery", async () => {
@@ -333,14 +345,16 @@ describe("offline boundary recovery content quality", () => {
 		expect(await readFile(path.join(f.root, "knowledge/level-archive/turn-000000.md"), "utf8")).toBe(levelOneTask);
 		const levelPrompt = decode(await f.reopen().bridge.recoveryEnvelope(f.authority()));
 		expect(levelPrompt.notes).toEqual({ guide, working_memory: "" });
-		expect(levelPrompt.environment.current_level_history.map((entry) => entry.turn)).toEqual([1]);
+		expect(levelPrompt.environment.current_level_history.attempts).toMatchObject([
+			{ attempt: 1, start: "level_entry", start_turn: 1, game_actions: 0, end_turn: 1 },
+		]);
 		expect(levelPrompt.environment.last_action_result).toMatchObject({
 			action: projected(2, 3),
 			observation: transition.observation,
 		});
 		expect(levelPrompt.environment.current_observation.levelsCompleted).toBe(1);
 		await f.author("working", levelTwoTask, "working-2");
-		await f.commit("blue-probe", { name: "ACTION6", data: { x: 4, y: 5 } }, 1);
+		await f.commit("blue-probe", { name: "ACTION6", data: { x: 4, y: 5 } }, 1, null, "GAME_OVER");
 		const reset = await f.commit("reset-2", { name: "RESET", data: {} }, 1, retryTask);
 		const firstReset = await f.bridge.prepareBoundary(f.authority());
 		if (firstReset === null) throw new Error("RESET boundary missing");
@@ -359,23 +373,15 @@ describe("offline boundary recovery content quality", () => {
 			observation: reset.observation,
 			observationDigest: reset.observationDigest,
 		});
-		expect(restoredReset.environment.current_level_history.map((entry) => entry.action)).toEqual([
-			projected(2, 3),
-			projected(4, 5),
-			{ name: "RESET", data: {} },
-		]);
-		expect(restoredReset.environment.current_level_history.map((entry) => entry.turn)).toEqual([1, 2, 3]);
-		expect(
-			restoredReset.environment.current_level_history.map(({ level, attempt, attemptStatus }) => ({
-				level,
-				attempt,
-				attemptStatus,
-			})),
-		).toEqual([
-			{ level: 2, attempt: 1, attemptStatus: "active" },
-			{ level: 2, attempt: 1, attemptStatus: "active" },
-			{ level: 2, attempt: 2, attemptStatus: "active" },
-		]);
+		expect(restoredReset.environment.current_level_history).toMatchObject({
+			level: 2,
+			attempts: [
+				{ attempt: 1, start: "level_entry", start_turn: 1, game_actions: 1, end_turn: 2 },
+				{ attempt: 2, start: "reset", start_turn: 3, game_actions: 0, end_turn: 3 },
+			],
+			total_attempts: 2,
+			truncated: false,
+		});
 		expect(firstReset.prompt).not.toContain(levelOneTask);
 		expect(firstReset.prompt).not.toContain(levelTwoTask);
 		await restartedReset.bridge.acknowledgeBoundary(firstReset.boundaryId);
@@ -400,6 +406,89 @@ describe("offline boundary recovery content quality", () => {
 		expect((await fresh.knowledge.read("guide"))?.content).toBe(guide);
 	});
 
+	it("retains both Attempt summaries after more than 128 actions", async () => {
+		const f = await fixture();
+		// Use valid intent/receipt/commit triples; this is a projection fixture, not a Game replay.
+		await f.commit("history-1", { name: "ACTION6", data: { x: 25, y: 7 } }, 0, null, "GAME_OVER");
+		await f.commit("retry-after-history", { name: "RESET", data: {} }, 0, retryTask);
+		for (let index = 3; index <= 127; index++)
+			await f.commit(`history-${index}`, { name: "ACTION6", data: { x: 25, y: 7 } }, 0);
+		const atLimit = decode(await f.bridge.recoveryEnvelope(f.authority()));
+		expect(atLimit.environment.current_level_history.attempts).toHaveLength(2);
+		expect(atLimit.environment.current_level_history.attempts[1]?.game_actions).toBe(125);
+		for (let index = 128; index <= 129; index++)
+			await f.commit(`history-${index}`, { name: "ACTION6", data: { x: 25, y: 7 } }, 0);
+		const envelope = decode(await f.bridge.recoveryEnvelope(f.authority()));
+		const history = envelope.environment.current_level_history;
+		expect(history.attempts).toHaveLength(2);
+		expect(history.attempts[0]).toMatchObject({ attempt: 1, outcome: "GAME_OVER", game_actions: 1, end_turn: 1 });
+		expect(JSON.stringify(history)).not.toContain('"action"');
+		expect(JSON.stringify(history)).not.toContain('"data"');
+		expect(JSON.stringify(history)).not.toContain(retryTask);
+		expect(history.attempts[1]).toMatchObject({ attempt: 2, start_turn: 2, game_actions: 127, end_turn: 129 });
+		expect(history.truncated).toBe(false);
+		// Summary retains Attempt 1 despite a long action sequence; archive remains authoritative.
+		expect((await f.artifacts.readDomain()).filter((r) => r.recordType === "turn.commit")).toHaveLength(130);
+	}, 20_000);
+
+	it.each(["entry", "middle", "old receipt", "attempt"])("refuses incomplete summary evidence: %s", async (fault) => {
+		const f = await fixture();
+		await f.commit("summary-1", { name: "ACTION6", data: { x: 25, y: 7 } }, 0);
+		await f.commit("summary-2", { name: "ACTION6", data: { x: 25, y: 7 } }, 0);
+		let records = await f.artifacts.readDomain();
+		if (fault === "entry" || fault === "middle")
+			records = records.filter(
+				(record) => !(record.recordType === "turn.commit" && record.payload.turn === (fault === "entry" ? 0 : 1)),
+			);
+		if (fault === "old receipt")
+			records = records.filter(
+				(record) => !(record.recordType === "environment.receipt" && record.payload.actionId === "summary-1"),
+			);
+		if (fault === "attempt")
+			records = records.map((record) =>
+				record.recordType === "turn.commit" && record.payload.turn === 1
+					? { ...record, payload: { ...record.payload, attempt: 2 } }
+					: record,
+			);
+		const artifacts = { readDomain: async () => records } as unknown as ArtifactStore;
+		await expect(new RuntimeKnowledgeBridge(artifacts, f.knowledge).recoveryEnvelope(f.authority())).rejects.toThrow(
+			/recovery/,
+		);
+	});
+
+	it("P2 characterizes absent recovery notes as empty strings rather than VISTA null", async () => {
+		const f = await fixture();
+		expect(await f.knowledge.read("guide")).toBeNull();
+		expect(await f.knowledge.read("working")).toBeNull();
+		const envelope = decode(await f.bridge.recoveryEnvelope(f.authority()));
+		expect(envelope.notes).toEqual({ guide: "", working_memory: "" });
+		expect(envelope.notes).not.toEqual({ guide: null, working_memory: null });
+	});
+
+	it("P2 preserves contradictory author notes but omits saved_at provenance in recovery text", async () => {
+		const f = await fixture();
+		const staleGuide = "Hypothesis A is exact; unverified.";
+		const retry = "Trial at Turn1 contradicts hypothesis A; starting state unknown.";
+		await f.author("guide", staleGuide, "p2-guide");
+		await f.author("working", "Old Attempt plan", "p2-working");
+		await f.commit("probe-before-reset", { name: "ACTION6", data: { x: 25, y: 7 } }, 0, null, "GAME_OVER");
+		await f.commit("reset-with-refutation", { name: "RESET", data: {} }, 0, retry);
+		const boundary = await f.bridge.prepareBoundary(f.authority());
+		if (boundary === null) throw new Error("Missing RESET boundary");
+		const envelope = decode(boundary.prompt);
+		expect(envelope.notes).toEqual({ guide: staleGuide, working_memory: retry });
+		expect(envelope.notes.working_memory).not.toHaveProperty("saved_at");
+		const working = await f.knowledge.read("working");
+		expect(working?.anchor).toBe(f.anchor());
+		expect(working?.version).toBeGreaterThan(0);
+		expect(boundary.prompt).not.toContain('"saved_at"');
+		// Pinned VISTA retry_recovery_prompt wraps non-null WORKING as {saved_at, content}.
+		expect(typeof envelope.notes.working_memory).toBe("string");
+		expect(decode((await f.reopen().bridge.prepareBoundary(f.authority()))?.prompt ?? "").notes).toEqual(
+			envelope.notes,
+		);
+	});
+
 	it("does not promote an uncommitted action or partial checkpoint note into recovery", async () => {
 		const f = await fixture();
 		await f.author("guide", guide, "guide-1");
@@ -418,7 +507,9 @@ describe("offline boundary recovery content quality", () => {
 			action: projected(2, 3),
 			observation: committed.observation,
 		});
-		expect(before.environment.current_level_history.map((entry) => entry.actionId)).toEqual([null, "tile-1"]);
+		expect(before.environment.current_level_history.attempts).toMatchObject([
+			{ attempt: 1, game_actions: 1, end_turn: 1 },
+		]);
 		// This bridge is not controller reconciliation: the pending intent is audit-only, never projected as a result.
 		await f.knowledge.requestCheckpoint("compact-partial", f.anchor());
 		const faultyIo: KnowledgeIo = {

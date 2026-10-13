@@ -22,18 +22,58 @@ const visual: Visual = renderVisual([
 	[2, 3],
 ]);
 
-class FakeTools {
-	readonly calls: Array<Record<string, unknown>> = [];
-	readonly domain: ToolDomainRecord[] = [
-		{ recordType: "run.binding", sequence: 1, payload: { turn: 0 } },
-		{ recordType: "turn.commit", sequence: 2, payload: { turn: 0, level: 1, attempt: 1, attemptStatus: "active" } },
-		{ recordType: "action.intent", sequence: 3, payload: { turn: 1, level: 1, attempt: 1, actionId: "a1" } },
+function historyRecords(count: number): ToolDomainRecord[] {
+	const records: ToolDomainRecord[] = [
 		{
 			recordType: "turn.commit",
-			sequence: 4,
-			payload: { turn: 1, level: 1, attempt: 1, attemptStatus: "ended", actionId: "a1" },
+			sequence: 1,
+			payload: {
+				turn: 0,
+				level: 1,
+				attempt: 1,
+				attemptStatus: "active",
+				actionId: null,
+				observationDigest: "obs-0",
+			},
 		},
 	];
+	for (let turn = 1; turn < count; turn++) {
+		const action = { name: "ACTION6", data: { x: 25, y: 7 } };
+		const observation = { state: "NOT_FINISHED" };
+		const payload = {
+			actionId: `a${turn}`,
+			action,
+			environmentInstanceId: "env",
+			baseTurn: turn - 1,
+			baseObservationDigest: `obs-${turn - 1}`,
+		};
+		records.push({ recordType: "action.intent", sequence: records.length + 1, payload });
+		records.push({
+			recordType: "environment.receipt",
+			sequence: records.length + 1,
+			payload: { ...payload, turn, observation, status: "complete", receiptDigest: `receipt-${turn}` },
+		});
+		records.push({
+			recordType: "turn.commit",
+			sequence: records.length + 1,
+			payload: {
+				turn,
+				observation,
+				observationDigest: `obs-${turn}`,
+				actionId: `a${turn}`,
+				receiptDigest: `receipt-${turn}`,
+				level: 1,
+				attempt: 1,
+				attemptStatus: "ended",
+			},
+		});
+	}
+	return records;
+}
+
+class FakeTools {
+	readonly calls: Array<Record<string, unknown>> = [];
+	readonly domain: ToolDomainRecord[] = historyRecords(2);
 	readonly frame: ToolFrame = { turn: 1, frame: 0, visualRef: "visual/t000001/f000000.png", visual };
 	readonly knowledge = new Map<"guide" | "working", ToolKnowledge>();
 	readonly writes = new Map<string, ToolKnowledge>();
@@ -258,9 +298,182 @@ describe("model tool contract", () => {
 		const attempts = await executor.execute(call("history", "history-2", { view: "attempts" }));
 		expect(attempts).toMatchObject({ ok: true, result: { attempts: [{ level: 1, attempt: 1, status: "ended" }] } });
 		const limited = await executor.execute(call("history", "history-3", { view: "events", limit: 1 }));
-		expect(limited.result).toMatchObject({ truncated: true, actualStartTurn: 0, actualEndTurn: 0 });
+		expect(limited.result).toMatchObject({ truncated: true, actualStartTurn: 1, actualEndTurn: 1 });
 		const empty = await executor.execute(call("history", "history-4", { view: "events", start_turn: 9 }));
 		expect(empty.result).toMatchObject({ events: [], actualStartTurn: null, actualEndTurn: null, truncated: false });
+	});
+
+	it("history follows VISTA latest-default with validated visual actions", async () => {
+		const fake = new FakeTools();
+		fake.domain.splice(0, fake.domain.length, ...historyRecords(5));
+		const executor = new ToolHarness(fake.ports());
+		const defaultRange = await executor.execute(call("history", "p2-default", { view: "events", limit: 2 }));
+		expect(defaultRange.result).toMatchObject({
+			events: [
+				{ turn: 3, actionId: "a3" },
+				{ turn: 4, actionId: "a4" },
+			],
+			actualStartTurn: 3,
+			actualEndTurn: 4,
+			truncated: true,
+		});
+		// Pinned VISTA controller.py:1143-1146 takes the latest events when no range is given.
+		const returned = defaultRange.result?.events;
+		if (!Array.isArray(returned)) throw new Error("Missing default events");
+		const turns = returned.map((event) => {
+			if (event === null || typeof event !== "object" || Array.isArray(event)) throw new Error("Invalid event");
+			return event.turn;
+		});
+		expect(turns).toEqual([3, 4]);
+		const ranged = await executor.execute(
+			call("history", "p2-ranged", { view: "events", start_turn: 2, end_turn: 4, limit: 2 }),
+		);
+		expect(ranged.result).toMatchObject({ actualStartTurn: 2, actualEndTurn: 3, truncated: true });
+		const events = ranged.result?.events;
+		if (!Array.isArray(events)) throw new Error("Missing events");
+		for (const event of events)
+			expect(event).toHaveProperty("action", {
+				name: "ACTION6",
+				data: { x: 408, y: 120 },
+				coordinateSpace: "visual_1024",
+				coordinateRepresentation: "canonical_replay_equivalent",
+			});
+		expect(fake.calls).toEqual([]);
+	});
+
+	it.each([
+		"intent",
+		"receipt",
+		"digest",
+		"action",
+		"observation",
+		"coordinates",
+		"missing base",
+		"wrong base",
+		"duplicate intent",
+		"duplicate receipt",
+		"duplicate base commit",
+		"missing base digest",
+		"invalid base type",
+	])("history refuses incomplete action proof: %s", async (fault) => {
+		const fake = new FakeTools();
+		let records = historyRecords(2);
+		if (fault === "intent" || fault === "receipt")
+			records = records.filter(
+				(record) => record.recordType !== (fault === "intent" ? "action.intent" : "environment.receipt"),
+			);
+		records = records.map((record) => {
+			const payload = { ...record.payload };
+			if (fault === "digest" && record.recordType === "turn.commit") delete payload.receiptDigest;
+			if (record.recordType === "environment.receipt") {
+				if (fault === "action") payload.action = { name: "RESET", data: {} };
+				if (fault === "observation") payload.observation = { state: "WIN" };
+			}
+			if (["action.intent", "environment.receipt"].includes(record.recordType)) {
+				if (fault === "coordinates") payload.action = { name: "ACTION6", data: { x: 64, y: 0 } };
+				if (fault === "missing base") {
+					delete payload.baseTurn;
+					delete payload.environmentInstanceId;
+				}
+				if (fault === "wrong base") payload.baseTurn = 17;
+				if (fault === "missing base digest") delete payload.baseObservationDigest;
+				if (fault === "invalid base type") payload.baseTurn = "0";
+			}
+			return { ...record, payload };
+		});
+		if (fault.startsWith("duplicate")) {
+			const kind =
+				fault === "duplicate intent"
+					? "action.intent"
+					: fault === "duplicate receipt"
+						? "environment.receipt"
+						: "turn.commit";
+			const duplicate = records.find((record) => record.recordType === kind);
+			if (!duplicate) throw new Error("Missing fixture proof");
+			records.push({ ...duplicate });
+		}
+		fake.domain.splice(0, fake.domain.length, ...records);
+		const result = await new ToolHarness(fake.ports()).execute(
+			call("history", `bad-${fault}`, { view: "events", start_turn: 1, end_turn: 1, limit: 1 }),
+		);
+		expect(result).toMatchObject({ ok: false, error: { code: "storage_failure" } });
+		expect(result.result).toBeUndefined();
+		expect(fake.calls).toEqual([]);
+	});
+
+	it("history keeps a long ledger bounded and projects only requested latest events", async () => {
+		const fake = new FakeTools();
+		fake.domain.splice(0, fake.domain.length, ...historyRecords(2001));
+		const result = await new ToolHarness(fake.ports()).execute(
+			call("history", "long-history", { view: "events", limit: 128 }),
+		);
+		expect(result).toMatchObject({
+			ok: true,
+			result: { actualStartTurn: 1873, actualEndTurn: 2000, truncated: true },
+		});
+		expect(result.result?.events).toHaveLength(128);
+		expect(fake.calls).toEqual([]);
+		expect(fake.domain).toHaveLength(6001);
+	});
+
+	it("history strips RESET author state and cannot promote pending intents", async () => {
+		const fake = new FakeTools();
+		const records = historyRecords(2).map((record) =>
+			record.recordType === "action.intent" || record.recordType === "environment.receipt"
+				? {
+						...record,
+						payload: { ...record.payload, action: { name: "RESET", data: {}, retryState: "private note" } },
+					}
+				: record,
+		);
+		records.push({
+			recordType: "action.intent",
+			sequence: records.length + 1,
+			payload: { actionId: "pending", action: { name: "ACTION7", data: {} } },
+		});
+		fake.domain.splice(0, fake.domain.length, ...records);
+		const before = structuredClone(fake.domain);
+		const result = await new ToolHarness(fake.ports()).execute(call("history", "reset-history", { view: "events" }));
+		expect(result.result?.events).toMatchObject([
+			{ turn: 0, action: null },
+			{ turn: 1, action: { name: "RESET", data: {} } },
+		]);
+		expect(JSON.stringify(result)).not.toContain("private note");
+		expect(JSON.stringify(result)).not.toContain("pending");
+		expect(fake.domain).toEqual(before);
+		expect(fake.calls).toEqual([]);
+	});
+
+	it("history limits the number of Attempt summaries after grouping", async () => {
+		const fake = new FakeTools();
+		fake.domain.splice(0, fake.domain.length);
+		for (let turn = 0; turn < 6; turn++) {
+			fake.domain.push({
+				recordType: "turn.commit",
+				sequence: turn + 1,
+				payload: {
+					turn,
+					level: turn < 4 ? 1 : 2,
+					attempt: turn < 2 || turn >= 4 ? 1 : 2,
+					attemptStatus: turn === 1 || turn === 3 ? "ended" : "active",
+				},
+			});
+		}
+		const executor = new ToolHarness(fake.ports());
+		const limited = await executor.execute(call("history", "p2-attempt-limit", { view: "attempts", limit: 2 }));
+		expect(limited.result).toEqual({
+			view: "attempts",
+			attempts: [
+				{ level: 1, attempt: 2, firstTurn: 2, lastTurn: 3, status: "ended" },
+				{ level: 2, attempt: 1, firstTurn: 4, lastTurn: 5, status: "active" },
+			],
+			actualStartTurn: 2,
+			actualEndTurn: 5,
+			truncated: true,
+		});
+		const all = await executor.execute(call("history", "p2-attempt-all", { view: "attempts", limit: 6 }));
+		expect(all.result?.attempts).toHaveLength(3);
+		expect(all.result).toMatchObject({ truncated: false, actualEndTurn: 5 });
 	});
 
 	it("GUIDE/WORKING writes require non-empty bounded content and safe replay", async () => {

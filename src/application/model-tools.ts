@@ -15,9 +15,11 @@ import {
 	type VisualRegion,
 } from "../domain/game-visual.js";
 import type { JsonValue } from "../protocol/canonical-json.js";
+import { committedActionProjection } from "./committed-action-projection.js";
 
 export const TOOL_SCHEMA = "pi-arc.tool-call.v1" as const;
 export const RESULT_SCHEMA = "pi-arc.tool-result.v1" as const;
+
 export const MAX_GUIDE_CODE_POINTS = 65_536;
 export const MAX_WORKING_CODE_POINTS = 16_384;
 export const MAX_QUESTION_CODE_POINTS = 1_024;
@@ -494,15 +496,21 @@ export class ModelToolExecutor {
 				entry.payload.turn >= start &&
 				entry.payload.turn <= end,
 		);
-		const selected = candidates.slice(0, limit);
-		const firstTurn = selected[0]?.payload.turn;
-		const lastTurn = selected.at(-1)?.payload.turn;
-		const actualStartTurn = typeof firstTurn === "number" ? firstTurn : null;
-		const actualEndTurn = typeof lastTurn === "number" ? lastTurn : null;
 		if (args.view === "events") {
+			const actionFor = committedActionProjection(records);
+			// 无范围时优先交付最新记录；显式分页仍从范围起点向后读取。
+			const selected =
+				args.start_turn === undefined && args.end_turn === undefined
+					? candidates.slice(-limit)
+					: candidates.slice(0, limit);
+			const firstTurn = selected[0]?.payload.turn;
+			const lastTurn = selected.at(-1)?.payload.turn;
+			const actualStartTurn = typeof firstTurn === "number" ? firstTurn : null;
+			const actualEndTurn = typeof lastTurn === "number" ? lastTurn : null;
 			const events = selected.map((entry) => ({
 				turn: entry.payload.turn ?? null,
 				actionId: entry.payload.actionId ?? null,
+				action: actionFor(entry),
 				observation: entry.payload.observation ?? null,
 				observationDigest: entry.payload.observationDigest ?? null,
 				level: entry.payload.level ?? null,
@@ -517,31 +525,36 @@ export class ModelToolExecutor {
 				truncated: selected.length < candidates.length,
 			};
 		}
-		const attempts = new Map<string, Record<string, JsonValue>>();
-		for (const entry of selected) {
+		// limit 按所请求视图的元素计数，不能在聚合前按 Turn 截断 Attempt。
+		const allAttempts = new Map<string, Record<string, JsonValue>>();
+		for (const entry of candidates) {
 			const attempt = entry.payload.attempt;
 			if (typeof attempt !== "number") continue;
 			const key = `${entry.payload.level ?? 1}:${attempt}`;
-			if (!attempts.has(key))
-				attempts.set(key, {
+			if (!allAttempts.has(key))
+				allAttempts.set(key, {
 					level: entry.payload.level ?? 1,
 					attempt,
 					firstTurn: entry.payload.turn ?? 0,
 					lastTurn: entry.payload.turn ?? 0,
 					status: "active",
 				});
-			const summary = attempts.get(key);
+			const summary = allAttempts.get(key);
 			if (summary !== undefined) {
 				summary.lastTurn = entry.payload.turn ?? summary.lastTurn ?? 0;
 				if (entry.payload.attemptStatus === "ended") summary.status = "ended";
 			}
 		}
+		const attemptEntries = [...allAttempts.values()];
+		const selectedAttempts = attemptEntries.slice(-limit);
+		const candidateStartTurn = selectedAttempts[0]?.firstTurn;
+		const candidateEndTurn = selectedAttempts.at(-1)?.lastTurn;
 		return {
 			view: "attempts",
-			attempts: [...attempts.values()],
-			actualStartTurn,
-			actualEndTurn,
-			truncated: selected.length < candidates.length,
+			attempts: selectedAttempts,
+			actualStartTurn: typeof candidateStartTurn === "number" ? candidateStartTurn : null,
+			actualEndTurn: typeof candidateEndTurn === "number" ? candidateEndTurn : null,
+			truncated: selectedAttempts.length < attemptEntries.length,
 		};
 	}
 
